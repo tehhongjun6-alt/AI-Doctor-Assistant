@@ -6,18 +6,114 @@ import { translations, type Language } from './i18n'
 
 type ActiveSection = 'chat' | 'map'
 
+const AUTH_TOKEN_KEY = 'ai_doc_session_token'
+const TOKEN_TTL_MS = 30 * 60 * 1000 // Token 有效期：30 分钟
+const ACCESS_PASSCODE = '1234'
+
+interface StoredToken {
+  token: string
+  expiresAt: number
+}
+
+// 检查 localStorage 中的 Token 是否有效
+function checkValidToken(): boolean {
+  try {
+    const raw = localStorage.getItem(AUTH_TOKEN_KEY)
+    if (!raw) return false
+    const parsed: StoredToken = JSON.parse(raw)
+    if (Date.now() < parsed.expiresAt) {
+      return true
+    }
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    return false
+  } catch {
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    return false
+  }
+}
+
+// 验证通过后颁发 30 分钟有效的 Token
+function issueToken(): void {
+  const tokenData: StoredToken = {
+    token: `tok_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    expiresAt: Date.now() + TOKEN_TTL_MS,
+  }
+  localStorage.setItem(AUTH_TOKEN_KEY, JSON.stringify(tokenData))
+}
+
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() =>
+    checkValidToken(),
+  )
+  const [passwordInput, setPasswordInput] = useState('')
+  const [loginError, setLoginError] = useState(false)
   const [activeSection, setActiveSection] = useState<ActiveSection>('chat')
   const [lang, setLang] = useState<Language>('zh')
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   const t = translations[lang]
 
+  function handleLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (passwordInput.trim() === ACCESS_PASSCODE) {
+      issueToken()
+      setIsAuthenticated(true)
+      setLoginError(false)
+      setPasswordInput('')
+    } else {
+      setLoginError(true)
+      setPasswordInput('')
+    }
+  }
+
   function handleSelectSection(section: ActiveSection) {
     setActiveSection(section)
     setIsMobileMenuOpen(false)
   }
 
+  // 1. 若没有有效 Token（首次进入或超过 30 分钟），直接展示网页端登录界面
+  if (!isAuthenticated) {
+    return (
+      <div className="login-gate-viewport">
+        <div className={`login-gate-card ${loginError ? 'shake' : ''}`}>
+          <div className="login-avatar-circle" aria-hidden="true" />
+          <h1 className="login-gate-title">AI 医生助手 · 登录访问</h1>
+          <p className="login-gate-desc">内部受限测试环境，请输入密码解锁访问</p>
+
+          <form className="login-gate-form" onSubmit={handleLogin}>
+            <div className="login-input-group">
+              <input
+                type="password"
+                className={`login-gate-input ${loginError ? 'error' : ''}`}
+                placeholder="请输入访问密码"
+                value={passwordInput}
+                autoFocus
+                maxLength={16}
+                onChange={(e) => {
+                  setPasswordInput(e.target.value)
+                  if (loginError) setLoginError(false)
+                }}
+              />
+            </div>
+            {loginError && (
+              <div className="login-gate-error-text" role="alert">
+                ⚠️ 密码错误，请重新输入
+              </div>
+            )}
+            <button type="submit" className="login-gate-btn">
+              验证并进入
+            </button>
+          </form>
+
+          <div className="login-gate-hint">
+            <span>⏱️ 验证成功后自动获取 Token，30 分钟内刷新免重新登录</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // 2. 具备有效 Token（30 分钟内刷新保持），直接展示完整系统
   return (
     <div className="app-viewport">
       <div className="app-container">
