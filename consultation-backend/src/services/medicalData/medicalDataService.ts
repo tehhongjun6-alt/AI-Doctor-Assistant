@@ -26,7 +26,7 @@ const providerSearches: Record<MedicalDataProvider, ProviderSearch> = {
 }
 
 function providersFor(category: MedicalDataCategory, message: string) {
-  if (category === 'icd' || /icd|编码|code/i.test(message)) {
+  if ((category as string) === 'icd' || /icd|编码|code/i.test(message)) {
     return ['icd11', 'medlineplus'] satisfies MedicalDataProvider[]
   }
   if (category === 'medication') {

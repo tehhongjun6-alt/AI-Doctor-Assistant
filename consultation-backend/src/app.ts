@@ -90,16 +90,17 @@ export function createApp(dependencies: AppDependencies = {}) {
       return
     }
 
-    const conversationId = validation.value.conversationId ?? randomUUID()
-    const language = validation.value.language ?? 'zh'
+    const validChat = validation.value
+    const conversationId = validChat.conversationId ?? randomUUID()
+    const language = validChat.language ?? 'zh'
     const session = conversationStore.getSession(conversationId)
     const history = conversationStore.getMergedHistory(
       conversationId,
-      validation.value.history,
+      validChat.history,
     )
 
     const emergency = checkEmergencyRisk(
-      validation.value.message,
+      validChat.message,
       history,
     )
 
@@ -115,7 +116,7 @@ export function createApp(dependencies: AppDependencies = {}) {
       )
       try {
         const dynamicAnswer = await generateHealthAnswer({
-          message: validation.value.message,
+          message: validChat.message,
           language,
           history,
           mode: 'emergency',
@@ -135,9 +136,9 @@ export function createApp(dependencies: AppDependencies = {}) {
 
       conversationStore.saveTurn({
         conversationId,
-        userMessage: validation.value.message,
+        userMessage: validChat.message,
         answer: emergencyAnswer,
-        clientHistory: validation.value.history,
+        clientHistory: validChat.history,
         category: medicalDataRoute?.category ?? 'symptom',
         activeEmergency: { category, reason },
       })
