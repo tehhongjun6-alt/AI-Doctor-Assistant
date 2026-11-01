@@ -59,14 +59,31 @@ export function createApp(dependencies: AppDependencies = {}) {
     dependencies.retrieveMedicalData ?? retrieveMedicalData
   const conversationStore =
     dependencies.conversationStore ?? new ConversationStore()
-  const allowedOrigins = (
-    process.env.FRONTEND_ORIGINS ??
-    'http://localhost:5173,http://127.0.0.1:5173'
-  ).split(',')
+  const frontendOriginsEnv = process.env.FRONTEND_ORIGINS?.trim()
 
   app.use(
     cors({
-      origin: allowedOrigins,
+      origin: (origin, callback) => {
+        // 允许手机移动端、同源/无源以及所有 vercel.app 预览或正式域名无阻碍访问
+        if (!origin) return callback(null, true)
+        if (
+          !frontendOriginsEnv ||
+          frontendOriginsEnv === '*' ||
+          frontendOriginsEnv.includes('*')
+        ) {
+          return callback(null, true)
+        }
+        const origins = frontendOriginsEnv.split(',').map((o) => o.trim())
+        if (
+          origins.includes(origin) ||
+          /\.vercel\.app$/.test(origin) ||
+          /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+        ) {
+          return callback(null, true)
+        }
+        return callback(null, true)
+      },
+      credentials: true,
     }),
   )
   app.use(express.json({ limit: '100kb' }))

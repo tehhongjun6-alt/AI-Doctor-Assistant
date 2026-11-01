@@ -49,8 +49,10 @@ interface ChatPanelProps {
 }
 
 const apiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ??
-  'http://127.0.0.1:8000'
+  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ||
+  (import.meta.env.DEV
+    ? 'http://127.0.0.1:8000'
+    : 'https://ai-doctor-assistant-79tt.onrender.com')
 
 function createMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`

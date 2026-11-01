@@ -70,9 +70,14 @@ export default function MapPanel({
   isMobileMenuOpen,
 }: MapPanelProps) {
   const t = translations[lang]
-  const apiKey = import.meta.env.VITE_GEOAPIFY_API_KEY
+  const apiKey =
+    import.meta.env.VITE_GEOAPIFY_API_KEY ||
+    'f5e42a9173fd49248e434af33e178bca'
   const apiBaseUrl =
-    import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
+    import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ||
+    (import.meta.env.DEV
+      ? 'http://127.0.0.1:8000'
+      : 'https://ai-doctor-assistant-79tt.onrender.com')
   const mapElement = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<maplibregl.Map | null>(null)
   const userMarkerRef = useRef<maplibregl.Marker | null>(null)
@@ -141,15 +146,23 @@ export default function MapPanel({
     let cancelled = false
 
     async function initializeMap() {
+      if (cancelled || !mapElement.current) return
+
+      // 默认参考中心（吉隆坡市区）：确保在手机未授权定位或微信拦截时地图依然能完美展示周边医疗
+      let center: [number, number] = [101.6869, 3.139]
+      let isDefaultLocation = false
+
       try {
         const position = await getCurrentPosition()
         if (cancelled || !mapElement.current) return
+        center = [position.coords.longitude, position.coords.latitude]
+      } catch {
+        isDefaultLocation = true
+      }
 
-        const center: [number, number] = [
-          position.coords.longitude,
-          position.coords.latitude,
-        ]
+      if (cancelled || !mapElement.current) return
 
+      try {
         const map = new maplibregl.Map({
           container: mapElement.current,
           style: `https://maps.geoapify.com/v1/styles/osm-bright/style.json?apiKey=${encodeURIComponent(apiKey)}`,
@@ -160,11 +173,15 @@ export default function MapPanel({
 
         map.addControl(new maplibregl.NavigationControl(), 'top-right')
 
-        // 用户当前位置标记
+        // 用户当前位置或参考中心标记
         const userMarker = new maplibregl.Marker({ color: '#2563eb' })
           .setLngLat(center)
           .setPopup(
-            new maplibregl.Popup({ offset: 12 }).setText(t.yourLocation),
+            new maplibregl.Popup({ offset: 12 }).setText(
+              isDefaultLocation
+                ? (lang === 'zh' ? '参考中心（开启手机定位可查看您身边5km医院）' : 'Default Center (Enable GPS for nearby 5km)')
+                : t.yourLocation,
+            ),
           )
           .addTo(map)
         userMarkerRef.current = userMarker
