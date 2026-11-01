@@ -540,6 +540,9 @@ function ChatPanel({
             value={input}
             disabled={isSending}
             onChange={(event) => setInput(event.target.value)}
+            onBlur={() => {
+              window.scrollTo(0, 0)
+            }}
           />
 
           <button

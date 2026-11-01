@@ -93,6 +93,9 @@ function App() {
                   setPasswordInput(e.target.value)
                   if (loginError) setLoginError(false)
                 }}
+                onBlur={() => {
+                  window.scrollTo(0, 0)
+                }}
               />
             </div>
             {loginError && (
