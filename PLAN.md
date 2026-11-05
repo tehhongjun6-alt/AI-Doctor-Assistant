@@ -105,7 +105,7 @@
 
 **验收重点**：`git diff` 里 `emergencyCheck.ts` 只有新增的行，原有的规则一行都没删改；马来语关键词不会误拦普通句子（例如只说「sakit kepala」头痛，不应判定为急症）
 
-### [ ] 第 4a 步｜多对话：建表 SQL
+### [x] 第 4a 步｜多对话：建表 SQL
 
 **做法**：新增 `consultation-backend/sql/001_conversations.sql`，内容如下。`user_id` 的类型必须和 `public.users.id` 一致；下面假设是 `uuid`，执行前先在 Supabase 确认。
 
@@ -151,7 +151,7 @@ alter table public.conversation_messages enable row level security;
 
 **验收重点**：SQL 要和上面的内容一致（两张表都开启 RLS、都有 `on delete cascade`）；`user_id` 的类型要和 `public.users.id` 一致；这一步只新增 SQL 文件，不能改任何代码
 
-### [ ] 第 4b 步｜多对话：存取数据的代码（只改后端）
+### [x] 第 4b 步｜多对话：存取数据的代码（只改后端）
 
 **做法**
 1. 新建 `src/services/conversationRepository.ts`，定义接口（全部 async）：
@@ -295,8 +295,8 @@ alter table public.conversation_messages enable row level security;
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 3 步已完成（emergencyCheck 已补充 8 类马来语急症关键词，39 个后端测试全部通过）
-- **下一步**：第 4a 步（多对话：建表 SQL）
+- **当前进度**：第 4a 步 SQL 已就绪（001_conversations.sql 已生成，users.id 查证为 uuid），等待在 Supabase 执行
+- **下一步**：第 4b 步（多对话：存取数据的代码）
 
 ## 6. 分工
 
