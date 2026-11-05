@@ -29,6 +29,21 @@ const UNSAFE_MEDICAL_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
     pattern: /(?:不需要|不用|切勿|千万不要)去医院(?:看病|就医|检查)/,
     reason: '包含劝阻正常就医的不安全建议',
   },
+  {
+    pattern:
+      /\b(?:i(?:\s+hereby|\s+officially)?\s+diagnose\s+you\s+with|you\s+(?:definitely|certainly)\s+have)\b/i,
+    reason: '包含越权确诊表述',
+  },
+  {
+    pattern:
+      /\b(?:guaranteed?\s+to\s+cure|100%\s*(?:cure|curable)|guarantee\s+a\s+cure)\b/i,
+    reason: '包含绝对化治愈承诺',
+  },
+  {
+    pattern:
+      /\b(?:no\s+need\s+to\s+(?:see|visit|consult)\s+a\s+doctor|you\s+don't\s+need\s+to\s+(?:go\s+to\s+the\s+hospital|see\s+a\s+doctor)|(?:do\s+not|never)\s+(?:go\s+to\s+the\s+hospital|see\s+a\s+doctor))\b/i,
+    reason: '包含劝阻正常就医的不安全建议',
+  },
 ]
 
 function isRecord(value: unknown): value is Record<string, unknown> {

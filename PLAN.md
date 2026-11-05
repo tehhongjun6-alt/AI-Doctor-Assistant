@@ -73,7 +73,7 @@
 - 情况 (a) 和 (b) 都优先沿用 `previousSearchQueries`；规则路由没有时，再从 `topicMessages` 里找上一句的医学词；都没有才用原句
 - **第 4b 步要沿用这两个名称**：数据库和会话状态用 `lastSearchQueries`，路由上下文用 `previousSearchQueries`
 
-### [ ] 第 2 步｜A3：安全检查补英文规则（只改后端）
+### [x] 第 2 步｜A3：安全检查补英文规则（只改后端）
 
 **做法**：在 `safety/outputSafetyCheck.ts` 的 `UNSAFE_MEDICAL_PATTERNS` 里**新增**英文规则，覆盖三种说法：
 - 越权确诊：如 "I diagnose you with"、"you definitely have"
@@ -281,8 +281,8 @@ alter table public.conversation_messages enable row level security;
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 1 步已完成（追问时沿用上一轮英文医学词搜索，后端 24 个测试全部通过；代码尚未提交）
-- **下一步**：第 2 步（A3：安全检查补英文规则）
+- **当前进度**：第 2 步已完成（outputSafetyCheck 已补充越权确诊、保证治愈、劝阻就医英文拦截规则，29 个后端测试全部通过）
+- **下一步**：第 3 步（A13：急症检测加马来语）
 
 ## 6. 分工
 
