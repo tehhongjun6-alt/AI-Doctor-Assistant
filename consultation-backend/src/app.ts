@@ -17,10 +17,15 @@ import {
   checkEmergencyRisk,
   EMERGENCY_ACTION_TEXT,
 } from './safety/emergencyCheck.js'
-import { validateChatRequest } from './schemas/chat.js'
+import { validateChatRequest, type ChatHistoryMessage } from './schemas/chat.js'
 import {
-  ConversationStore,
-} from './services/conversationStore.js'
+  createMemoryConversationRepository,
+  createPgConversationRepository,
+  type ConversationRepository,
+  type ConversationState,
+  MAX_CONVERSATIONS_PER_USER,
+  MAX_MESSAGES_PER_CONVERSATION,
+} from './services/conversationRepository.js'
 import {
   MapServiceError,
   searchGeoapifyHospitals,
@@ -53,7 +58,7 @@ interface AppDependencies {
   searchHospitals?: SearchHospitals
   generateHealthAnswer?: GenerateHealthAnswer
   retrieveMedicalData?: RetrieveMedicalData
-  conversationStore?: ConversationStore
+  conversationRepository?: ConversationRepository
   userRepository?: UserRepository
   routeMedicalData?: RouteMedicalData
   chatRateLimiter?: RequestRateLimiter
@@ -110,6 +115,20 @@ data: ${JSON.stringify(data)}
   }
 }
 
+let dbWarned = false
+function getDefaultConversationRepository(): ConversationRepository {
+  if (process.env.DATABASE_URL) {
+    return createPgConversationRepository(process.env.DATABASE_URL)
+  }
+  if (!dbWarned) {
+    dbWarned = true
+    console.warn(
+      '[conversationRepository] DATABASE_URL not set, falling back to memory repository',
+    )
+  }
+  return createMemoryConversationRepository()
+}
+
 export function createApp(dependencies: AppDependencies = {}) {
   const app = express()
   const searchHospitals =
@@ -118,13 +137,25 @@ export function createApp(dependencies: AppDependencies = {}) {
     dependencies.generateHealthAnswer ?? generateGeminiHealthAnswer
   const getMedicalData =
     dependencies.retrieveMedicalData ?? retrieveMedicalData
-  const conversationStore =
-    dependencies.conversationStore ?? new ConversationStore()
+  const conversationRepository =
+    dependencies.conversationRepository ?? getDefaultConversationRepository()
   const routeMedicalData =
     dependencies.routeMedicalData ?? routeMedicalDataRequest
   const chatRateLimiter =
     dependencies.chatRateLimiter ?? new RequestRateLimiter()
   const frontendOriginsEnv = process.env.FRONTEND_ORIGINS?.trim()
+
+  let lastDeleteExpiredAt = 0
+  const ONE_HOUR_MS = 60 * 60 * 1000
+  function maybeDeleteExpired() {
+    const now = Date.now()
+    if (now - lastDeleteExpiredAt >= ONE_HOUR_MS) {
+      lastDeleteExpiredAt = now
+      conversationRepository.deleteExpired().catch((err) => {
+        console.error('Failed to cleanup expired conversations:', err)
+      })
+    }
+  }
 
   app.use(
     cors({
@@ -164,243 +195,418 @@ export function createApp(dependencies: AppDependencies = {}) {
     createAuthRouter(dependencies.userRepository ?? createPgUserRepository()),
   )
 
+  // -------------------------------------------------------------------------
+  // Conversation Management API (Step 4c)
+  // -------------------------------------------------------------------------
+  app.get(
+    '/api/conversations',
+    requireAuth,
+    async (request: AuthenticatedRequest, response) => {
+      const userId = request.user?.sub
+      if (!userId) {
+        response.status(401).json({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: '登录已过期，请重新登录。' },
+        })
+        return
+      }
+      maybeDeleteExpired()
+      try {
+        const conversations = await conversationRepository.listByUser(userId)
+        response.json({
+          conversations,
+          limit: MAX_CONVERSATIONS_PER_USER,
+        })
+      } catch (error) {
+        console.error('Failed to list conversations:', error)
+        response.status(500).json({
+          success: false,
+          error: { code: 'SERVER_ERROR', message: '获取对话列表失败。' },
+        })
+      }
+    },
+  )
+
+  app.get(
+    '/api/conversations/:id',
+    requireAuth,
+    async (request: AuthenticatedRequest, response) => {
+      const userId = request.user?.sub
+      if (!userId) {
+        response.status(401).json({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: '登录已过期，请重新登录。' },
+        })
+        return
+      }
+      const id = String(request.params.id)
+      try {
+        const conversation = await conversationRepository.get(id, userId)
+        if (!conversation) {
+          response.status(404).json({
+            success: false,
+            error: {
+              code: 'CONVERSATION_NOT_FOUND',
+              message: '对话不存在或已过期。',
+            },
+          })
+          return
+        }
+        const messages =
+          (await conversationRepository.getMessages(id, userId)) ?? []
+        response.json({
+          conversation: {
+            id: conversation.id,
+            title: conversation.title,
+            messageCount: conversation.messageCount,
+            createdAt: conversation.createdAt,
+            updatedAt: conversation.updatedAt,
+          },
+          messages,
+        })
+      } catch (error) {
+        console.error('Failed to get conversation:', error)
+        response.status(500).json({
+          success: false,
+          error: { code: 'SERVER_ERROR', message: '获取对话详情失败。' },
+        })
+      }
+    },
+  )
+
+  app.delete(
+    '/api/conversations/:id',
+    requireAuth,
+    async (request: AuthenticatedRequest, response) => {
+      const userId = request.user?.sub
+      if (!userId) {
+        response.status(401).json({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: '登录已过期，请重新登录。' },
+        })
+        return
+      }
+      const id = String(request.params.id)
+      try {
+        const deleted = await conversationRepository.delete(id, userId)
+        if (!deleted) {
+          response.status(404).json({
+            success: false,
+            error: {
+              code: 'CONVERSATION_NOT_FOUND',
+              message: '对话不存在或无权删除。',
+            },
+          })
+          return
+        }
+        response.status(204).end()
+      } catch (error) {
+        console.error('Failed to delete conversation:', error)
+        response.status(500).json({
+          success: false,
+          error: { code: 'SERVER_ERROR', message: '删除对话失败。' },
+        })
+      }
+    },
+  )
+
+  // -------------------------------------------------------------------------
+  // Chat Handler (JSON & SSE)
+  // -------------------------------------------------------------------------
   const handleChat =
     (mode: 'json' | 'stream') =>
     async (request: AuthenticatedRequest, response: express.Response) => {
-    const reply = createChatResponder(response, mode)
+      const reply = createChatResponder(response, mode)
 
-    const userId = request.user?.sub
-    const retryAfter = chatRateLimiter.consume(userId ?? request.ip ?? 'anonymous')
-    if (retryAfter > 0) {
-      response.setHeader('Retry-After', String(retryAfter))
-      reply.send(429, {
-        success: false,
-        error: {
-          code: 'RATE_LIMITED',
-          message: `提问太频繁了，请 ${retryAfter} 秒后再试。`,
-          retryAfter,
-        },
-      })
-      return
-    }
-
-    const validation = validateChatRequest(request.body)
-
-    if (!validation.valid) {
-      reply.send(400, {
-        success: false,
-        error: {
-          code: 'INVALID_CHAT_REQUEST',
-          message: '聊天请求格式无效。',
-          details: validation.errors,
-        },
-      })
-      return
-    }
-
-    const validChat = validation.value
-    // 会话 ID 若属于其他用户，则为当前用户开启新会话，避免读取他人对话
-    const conversationId =
-      validChat.conversationId &&
-      !conversationStore.isOwnedByOther(validChat.conversationId, userId)
-        ? validChat.conversationId
-        : randomUUID()
-    const language = validChat.language ?? 'zh'
-    const session = conversationStore.getSession(conversationId, userId)
-    const history = conversationStore.getMergedHistory(
-      conversationId,
-      validChat.history,
-      userId,
-    )
-
-    const emergency = checkEmergencyRisk(
-      validChat.message,
-      history,
-    )
-
-    async function respondWithEmergency(
-      category: NonNullable<typeof emergency.category>,
-      reason: string,
-      medicalDataRoute?: Awaited<ReturnType<typeof routeMedicalDataRequest>>,
-    ) {
-      let emergencyAnswer = buildEmergencyStructuredAnswer(
-        category,
-        reason,
-        language,
-      )
-      try {
-        const dynamicAnswer = await generateHealthAnswer({
-          message: validChat.message,
-          language,
-          history,
-          mode: 'emergency',
-          emergencyContext: { category, reason },
+      const userId = request.user?.sub
+      if (!userId) {
+        reply.send(401, {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: '登录已过期，请重新登录。',
+          },
         })
-        const check = validateAndSanitizeAnswer(
-          dynamicAnswer,
-          'emergency',
-          language,
-        )
-        if (check.passed) {
-          emergencyAnswer = check.answer
-        }
-      } catch {
-        // Fallback to static structured emergency template if Gemini is unavailable or times out
+        return
+      }
+      const currentUserId: string = userId
+
+      const retryAfter = chatRateLimiter.consume(userId)
+      if (retryAfter > 0) {
+        response.setHeader('Retry-After', String(retryAfter))
+        reply.send(429, {
+          success: false,
+          error: {
+            code: 'RATE_LIMITED',
+            message: `提问太频繁了，请 ${retryAfter} 秒后再试。`,
+            retryAfter,
+          },
+        })
+        return
       }
 
-      conversationStore.saveTurn({
-        conversationId,
-        ownerId: userId,
-        userMessage: validChat.message,
-        answer: emergencyAnswer,
-        clientHistory: validChat.history,
-        category: medicalDataRoute?.category ?? 'symptom',
-        searchQueries: medicalDataRoute?.searchQueries,
-        activeEmergency: { category, reason },
-      })
+      const validation = validateChatRequest(request.body)
 
-      reply.send(200, {
-        success: true,
-        data: {
-          type: 'emergency',
-          conversationId,
-          answer: emergencyAnswer,
-          emergency: {
-            isEmergency: true,
-            category,
-            reason,
-            action: EMERGENCY_ACTION_TEXT,
+      if (!validation.valid) {
+        reply.send(400, {
+          success: false,
+          error: {
+            code: 'INVALID_CHAT_REQUEST',
+            message: '聊天请求格式无效。',
+            details: validation.errors,
           },
-          ...(medicalDataRoute ? { medicalDataRoute } : {}),
-          showHospitalMap: true,
-        },
-      })
-    }
+        })
+        return
+      }
 
-    if (emergency.isEmergency) {
-      await respondWithEmergency(
-        emergency.category ?? 'unconsciousness',
-        emergency.reason ?? '识别到可能危及生命的紧急医疗情况。',
-      )
-      return
-    }
+      const validChat = validation.value
+      const language = validChat.language ?? 'zh'
 
-    try {
-      const medicalDataRoute = await routeMedicalData(
-        validation.value.message,
-        {
-          history,
-          activeCategory: session?.activeCategory,
-          activeEmergency: session?.activeEmergency,
-          topicMessages: session?.topicMessages,
-          previousSearchQueries: session?.lastSearchQueries,
-        },
-      )
+      maybeDeleteExpired()
 
-      if (
-        medicalDataRoute.route === 'emergency' ||
-        medicalDataRoute.isEmergency
+      let conversationId: string
+      let activeConversation: ConversationState | null = null
+      let history: ChatHistoryMessage[] = []
+
+      if (!validChat.conversationId) {
+        const title = validChat.message.trim().slice(0, 15) || '新医疗咨询'
+        const created = await conversationRepository.createIfUnderLimit(
+          userId,
+          title,
+        )
+        if (!created) {
+          reply.send(409, {
+            success: false,
+            error: {
+              code: 'CONVERSATION_LIMIT_REACHED',
+              message: '对话已满（最多 3 个），请先删除一个。',
+            },
+          })
+          return
+        }
+        conversationId = created.id
+        activeConversation = await conversationRepository.get(
+          conversationId,
+          userId,
+        )
+        history = []
+      } else {
+        activeConversation = await conversationRepository.get(
+          validChat.conversationId,
+          userId,
+        )
+        if (!activeConversation) {
+          reply.send(404, {
+            success: false,
+            error: {
+              code: 'CONVERSATION_NOT_FOUND',
+              message: '对话不存在或已过期。',
+            },
+          })
+          return
+        }
+        if (activeConversation.messageCount >= MAX_MESSAGES_PER_CONVERSATION) {
+          reply.send(409, {
+            success: false,
+            error: {
+              code: 'CONVERSATION_FULL',
+              message: '这个对话已满 100 条，请开新对话。',
+            },
+          })
+          return
+        }
+        conversationId = activeConversation.id
+        history = await conversationRepository.getContextHistory(conversationId)
+      }
+
+      const emergency = checkEmergencyRisk(validChat.message, history)
+
+      async function respondWithEmergency(
+        category: NonNullable<typeof emergency.category>,
+        reason: string,
+        medicalDataRoute?: Awaited<ReturnType<typeof routeMedicalDataRequest>>,
       ) {
-        const emergencyReason =
-          medicalDataRoute.emergencyReason ??
-          medicalDataRoute.reason ??
-          session?.activeEmergency?.reason ??
-          '识别到可能危及生命的紧急医疗情况。'
-        const emergencyCategory =
-          medicalDataRoute.emergencyCategory ??
-          session?.activeEmergency?.category ??
-          'unconsciousness'
+        let emergencyAnswer = buildEmergencyStructuredAnswer(
+          category,
+          reason,
+          language,
+        )
+        try {
+          const dynamicAnswer = await generateHealthAnswer({
+            message: validChat.message,
+            language,
+            history,
+            mode: 'emergency',
+            emergencyContext: { category, reason },
+          })
+          const check = validateAndSanitizeAnswer(
+            dynamicAnswer,
+            'emergency',
+            language,
+          )
+          if (check.passed) {
+            emergencyAnswer = check.answer
+          }
+        } catch {
+          // Fallback to static structured emergency template if Gemini is unavailable or times out
+        }
 
+        await conversationRepository.appendTurn({
+          conversationId,
+          userId: currentUserId,
+          userMessage: validChat.message,
+          assistantAnswer: emergencyAnswer,
+          category: medicalDataRoute?.category ?? 'symptom',
+          searchQueries: medicalDataRoute?.searchQueries,
+          activeEmergency: { category, reason },
+          isEmergency: true,
+          mapCareLevel: 'hospital',
+          useForContext: true,
+        })
+
+        reply.send(200, {
+          success: true,
+          data: {
+            type: 'emergency',
+            conversationId,
+            answer: emergencyAnswer,
+            emergency: {
+              isEmergency: true,
+              category,
+              reason,
+              action: EMERGENCY_ACTION_TEXT,
+            },
+            ...(medicalDataRoute ? { medicalDataRoute } : {}),
+            showHospitalMap: true,
+          },
+        })
+      }
+
+      if (emergency.isEmergency) {
         await respondWithEmergency(
-          emergencyCategory,
-          emergencyReason,
-          medicalDataRoute,
+          emergency.category ?? 'unconsciousness',
+          emergency.reason ?? '识别到可能危及生命的紧急医疗情况。',
         )
         return
       }
 
-      let rawAnswer: unknown
-      let sources: Array<{ title: string; url: string }> = []
-      let medicalData: MedicalDataResult | undefined
-      let fallbackTriggeredReason: string | undefined
-
       try {
-        if (medicalDataRoute.route === 'direct_model') {
-          rawAnswer = await generateHealthAnswer({
-            message: validation.value.message,
-            language,
+        const medicalDataRoute = await routeMedicalData(
+          validChat.message,
+          {
             history,
-            mode: 'direct_model',
-            onSummaryDelta: reply.delta,
-          })
-        } else {
-          medicalData = await getMedicalData({
-            message: validation.value.message,
-            route: medicalDataRoute,
-            cachedEvidence:
-              session?.activeCategory === medicalDataRoute.category
-                ? session?.lastEvidence
-                : undefined,
-          })
+            activeCategory: activeConversation?.activeCategory,
+            activeEmergency: activeConversation?.activeEmergency,
+            topicMessages: activeConversation?.topicMessages,
+            previousSearchQueries: activeConversation?.lastSearchQueries,
+          },
+        )
 
-          rawAnswer = await generateHealthAnswer({
-            message: validation.value.message,
-            language,
-            history,
-            evidence: medicalData.evidence,
-            mode:
-              medicalDataRoute.route === 'medical_qa'
-                ? 'medical_qa'
-                : 'medical_api',
-            onSummaryDelta: reply.delta,
-          })
-          // 来源去重，供前端展示参考资料
-          const seenUrls = new Set<string>()
-          sources = medicalData.evidence
-            .filter((item) => {
-              if (!item.url || seenUrls.has(item.url)) return false
-              seenUrls.add(item.url)
-              return true
-            })
-            .slice(0, 5)
-            .map((item) => ({ title: item.title, url: item.url }))
-        }
-      } catch (modelError) {
         if (
-          modelError instanceof ModelServiceError &&
-          (modelError.code === 'REFUSED' ||
-            modelError.code === 'INVALID_RESPONSE')
+          medicalDataRoute.route === 'emergency' ||
+          medicalDataRoute.isEmergency
         ) {
-          fallbackTriggeredReason = modelError.message
-          rawAnswer = undefined
-        } else {
-          throw modelError
+          const emergencyReason =
+            medicalDataRoute.emergencyReason ??
+            medicalDataRoute.reason ??
+            activeConversation?.activeEmergency?.reason ??
+            '识别到可能危及生命的紧急医疗情况。'
+          const emergencyCategory =
+            medicalDataRoute.emergencyCategory ??
+            activeConversation?.activeEmergency?.category ??
+            'unconsciousness'
+
+          await respondWithEmergency(
+            emergencyCategory,
+            emergencyReason,
+            medicalDataRoute,
+          )
+          return
         }
-      }
 
-      const safetyCheck =
-        rawAnswer !== undefined
-          ? validateAndSanitizeAnswer(
-              rawAnswer,
-              medicalDataRoute.route,
+        let rawAnswer: unknown
+        let sources: Array<{ title: string; url: string }> = []
+        let medicalData: MedicalDataResult | undefined
+        let fallbackTriggeredReason: string | undefined
+
+        try {
+          if (medicalDataRoute.route === 'direct_model') {
+            rawAnswer = await generateHealthAnswer({
+              message: validChat.message,
               language,
-            )
-          : {
-              passed: false,
-              reason: fallbackTriggeredReason ?? '模型未返回合规内容，已启用安全备用回答。',
-              answer: createSafeFallbackAnswer(language),
-            }
+              history,
+              mode: 'direct_model',
+              onSummaryDelta: reply.delta,
+            })
+          } else {
+            medicalData = await getMedicalData({
+              message: validChat.message,
+              route: medicalDataRoute,
+              cachedEvidence:
+                activeConversation?.activeCategory === medicalDataRoute.category
+                  ? activeConversation?.lastEvidence
+                  : undefined,
+            })
 
-      const answer = safetyCheck.answer
-      const isLayer3Emergency = answer.urgency === 'emergency'
+            rawAnswer = await generateHealthAnswer({
+              message: validChat.message,
+              language,
+              history,
+              evidence: medicalData.evidence,
+              mode:
+                medicalDataRoute.route === 'medical_qa'
+                  ? 'medical_qa'
+                  : 'medical_api',
+              onSummaryDelta: reply.delta,
+            })
+            // 来源去重，供前端展示参考资料
+            const seenUrls = new Set<string>()
+            sources = medicalData.evidence
+              .filter((item) => {
+                if (!item.url || seenUrls.has(item.url)) return false
+                seenUrls.add(item.url)
+                return true
+              })
+              .slice(0, 5)
+              .map((item) => ({ title: item.title, url: item.url }))
+          }
+        } catch (modelError) {
+          if (
+            modelError instanceof ModelServiceError &&
+            (modelError.code === 'REFUSED' ||
+              modelError.code === 'INVALID_RESPONSE')
+          ) {
+            fallbackTriggeredReason = modelError.message
+            rawAnswer = undefined
+          } else {
+            throw modelError
+          }
+        }
 
-      if (safetyCheck.passed) {
-        conversationStore.saveTurn({
+        const safetyCheck =
+          rawAnswer !== undefined
+            ? validateAndSanitizeAnswer(
+                rawAnswer,
+                medicalDataRoute.route,
+                language,
+              )
+            : {
+                passed: false,
+                reason:
+                  fallbackTriggeredReason ??
+                  '模型未返回合规内容，已启用安全备用回答。',
+                answer: createSafeFallbackAnswer(language),
+              }
+
+        const answer = safetyCheck.answer
+        const isLayer3Emergency = answer.urgency === 'emergency'
+
+        await conversationRepository.appendTurn({
           conversationId,
-          ownerId: userId,
-          userMessage: validation.value.message,
-          answer,
-          clientHistory: validation.value.history,
+          userId: currentUserId,
+          userMessage: validChat.message,
+          assistantAnswer: answer,
+          sources,
           category: medicalDataRoute.category,
           evidence: medicalData?.evidence,
           searchQueries: medicalDataRoute.searchQueries,
@@ -410,88 +616,93 @@ export function createApp(dependencies: AppDependencies = {}) {
                 reason: answer.summary.slice(0, 120),
               }
             : null,
+          isEmergency: isLayer3Emergency,
+          mapCareLevel:
+            isLayer3Emergency || answer.urgency === 'high'
+              ? 'hospital'
+              : 'clinic',
+          useForContext: safetyCheck.passed, // 兜底回答不进入后续上下文
         })
-      }
 
-      reply.send(200, {
-        success: true,
-        data: {
-          ...(isLayer3Emergency
-            ? {
-                type: 'emergency' as const,
-                emergency: {
-                  isEmergency: true,
-                  reason: answer.summary,
-                  action: EMERGENCY_ACTION_TEXT,
-                },
-              }
-            : {}),
-          conversationId,
-          messageId: randomUUID(),
-          answer,
-          medicalDataRoute,
-          // 原始 evidence 体积大且前端不使用，只返回状态
-          medicalDataStatus: medicalData?.status,
-          sources,
-          safetyCheck: {
-            passed: safetyCheck.passed,
-            ...(safetyCheck.reason ? { reason: safetyCheck.reason } : {}),
+        reply.send(200, {
+          success: true,
+          data: {
+            ...(isLayer3Emergency
+              ? {
+                  type: 'emergency' as const,
+                  emergency: {
+                    isEmergency: true,
+                    reason: answer.summary,
+                    action: EMERGENCY_ACTION_TEXT,
+                  },
+                }
+              : {}),
+            conversationId,
+            messageId: randomUUID(),
+            answer,
+            medicalDataRoute,
+            // 原始 evidence 体积大且前端不使用，只返回状态
+            medicalDataStatus: medicalData?.status,
+            sources,
+            safetyCheck: {
+              passed: safetyCheck.passed,
+              ...(safetyCheck.reason ? { reason: safetyCheck.reason } : {}),
+            },
+            showHospitalMap:
+              answer.urgency === 'high' || answer.urgency === 'emergency',
           },
-          showHospitalMap:
-            answer.urgency === 'high' || answer.urgency === 'emergency',
-        },
-      })
-    } catch (error) {
-      if (error instanceof ModelServiceError) {
-        const errorResponses = {
-          NOT_CONFIGURED: {
-            status: 503,
-            code: 'AI_MODEL_NOT_CONFIGURED',
-            message: 'AI 模型尚未配置。',
-          },
-          TIMEOUT: {
-            status: 504,
-            code: 'AI_MODEL_TIMEOUT',
-            message: 'AI 回答超时，请稍后再试。',
-          },
-          REFUSED: {
-            status: 422,
-            code: 'AI_MODEL_REFUSED',
-            message: 'AI 无法处理这项内容。',
-          },
-          API_ERROR: {
-            status: 502,
+        })
+      } catch (error) {
+        if (error instanceof ModelServiceError) {
+          const errorResponses = {
+            NOT_CONFIGURED: {
+              status: 503,
+              code: 'AI_MODEL_NOT_CONFIGURED',
+              message: 'AI 模型尚未配置。',
+            },
+            TIMEOUT: {
+              status: 504,
+              code: 'AI_MODEL_TIMEOUT',
+              message: 'AI 回答超时，请稍后再试。',
+            },
+            REFUSED: {
+              status: 422,
+              code: 'AI_MODEL_REFUSED',
+              message: 'AI 无法处理这项内容。',
+            },
+            API_ERROR: {
+              status: 502,
+              code: 'AI_MODEL_UNAVAILABLE',
+              message: 'AI 服务暂时无法使用。',
+            },
+            INVALID_RESPONSE: {
+              status: 502,
+              code: 'AI_MODEL_INVALID_RESPONSE',
+              message: 'AI 返回了无效内容，请重新尝试。',
+            },
+          } as const
+          const modelError = errorResponses[error.code]
+
+          reply.send(modelError.status, {
+            success: false,
+            error: {
+              code: modelError.code,
+              message: modelError.message,
+            },
+          })
+          return
+        }
+
+        console.error('Health consultation failed', error)
+        reply.send(502, {
+          success: false,
+          error: {
             code: 'AI_MODEL_UNAVAILABLE',
             message: 'AI 服务暂时无法使用。',
           },
-          INVALID_RESPONSE: {
-            status: 502,
-            code: 'AI_MODEL_INVALID_RESPONSE',
-            message: 'AI 返回了无效内容，请重新尝试。',
-          },
-        } as const
-        const modelError = errorResponses[error.code]
-
-        reply.send(modelError.status, {
-          success: false,
-          error: {
-            code: modelError.code,
-            message: modelError.message,
-          },
         })
-        return
       }
-
-      console.error('Health consultation failed', error)
-      reply.send(502, {
-        success: false,
-        error: {
-          code: 'AI_MODEL_UNAVAILABLE',
-          message: 'AI 服务暂时无法使用。',
-        },
-      })
     }
-  }
 
   app.post('/api/chat', requireAuth, handleChat('json'))
   app.post('/api/chat/stream', requireAuth, handleChat('stream'))

@@ -118,17 +118,17 @@ describe('chat API contract', () => {
       .post('/api/chat')
       .set('Authorization', auth())
       .send({
-        conversationId: 'conversation-1',
         message: '我的喉咙痛了两天。',
         images: [{ id: 'image-1', mimeType: 'image/jpeg' }],
         history: [{ role: 'assistant', content: '请描述你的症状。' }],
       })
 
     expect(response.status).toBe(200)
+    expect(typeof response.body.data.conversationId).toBe('string')
+    expect(response.body.data.conversationId).toBeTruthy()
     expect(response.body).toMatchObject({
       success: true,
       data: {
-        conversationId: 'conversation-1',
         answer: { summary: modelAnswer.summary, urgency: 'low' },
         sources: [
           { title: 'Sore Throat', url: 'https://medlineplus.gov/sorethroat.html' },
@@ -140,7 +140,7 @@ describe('chat API contract', () => {
     expect(generateHealthAnswer).toHaveBeenCalledWith(
       expect.objectContaining({
         message: '我的喉咙痛了两天。',
-        history: [{ role: 'assistant', content: '请描述你的症状。' }],
+        history: [],
         mode: 'medical_api',
       }),
     )
@@ -156,21 +156,23 @@ describe('chat API contract', () => {
     const owner = `Bearer ${signToken({ id: 'owner', email: 'o@example.com' }).token}`
     const intruder = `Bearer ${signToken({ id: 'intruder', email: 'i@example.com' }).token}`
 
-    await request(app)
+    const ownerRes = await request(app)
       .post('/api/chat')
       .set('Authorization', owner)
-      .send({ conversationId: 'private-1', message: '我的喉咙痛了两天。' })
+      .send({ message: '我的喉咙痛了两天。' })
       .expect(200)
+
+    const conversationId = ownerRes.body.data.conversationId
+    expect(conversationId).toBeDefined()
 
     const response = await request(app)
       .post('/api/chat')
       .set('Authorization', intruder)
-      .send({ conversationId: 'private-1', message: '我之前说了什么？' })
+      .send({ conversationId, message: '我之前说了什么？' })
 
-    expect(response.status).toBe(200)
-    expect(response.body.data.conversationId).not.toBe('private-1')
-    const intruderCall = generateHealthAnswer.mock.calls.at(-1)?.[0]
-    expect(JSON.stringify(intruderCall.history)).not.toContain('喉咙痛')
+    expect(response.status).toBe(404)
+    expect(response.body.error.code).toBe('CONVERSATION_NOT_FOUND')
+    expect(generateHealthAnswer).toHaveBeenCalledTimes(1)
   })
 
   it('rate limits chat requests per user', async () => {

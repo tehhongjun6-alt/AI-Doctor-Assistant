@@ -7,7 +7,6 @@ import {
   CONTEXT_HISTORY_LIMIT,
   CONVERSATION_TTL_DAYS,
 } from '../src/services/conversationRepository.js'
-import { ConversationStore } from '../src/services/conversationStore.js'
 import type { ChatAnswer } from '../schemas/chat.js'
 
 const sampleAnswer: ChatAnswer = {
@@ -161,16 +160,10 @@ describe('conversationRepository - Memory Implementation & State Transitions (St
     expect(aliceGet?.title).toBe('Alice 的对话')
   })
 
-  it('matches ConversationStore.saveTurn behavior in nextConversationState', () => {
-    const store = new ConversationStore()
-    const convId = 'test-conv-parity'
-
+  it('tracks conversation state correctly across turns in nextConversationState', () => {
     // Turn 1: medical question with evidence and search queries
     const turn1Input = {
-      conversationId: convId,
-      ownerId: 'parity-user',
       userMessage: '我胸口有点闷痛',
-      answer: sampleAnswer,
       category: 'cardiology' as const,
       evidence: [{ title: 'Heart Guide', url: 'https://example.com' }],
       searchQueries: ['胸痛 原因'],
@@ -180,41 +173,37 @@ describe('conversationRepository - Memory Implementation & State Transitions (St
       },
     }
 
-    const legacySession1 = store.saveTurn(turn1Input)
-    const nextState1 = nextConversationState(undefined, {
-      userMessage: turn1Input.userMessage,
-      category: turn1Input.category,
-      evidence: turn1Input.evidence,
-      searchQueries: turn1Input.searchQueries,
-      activeEmergency: turn1Input.activeEmergency,
-    })
+    const nextState1 = nextConversationState(undefined, turn1Input)
 
-    expect(nextState1.activeCategory).toBe(legacySession1.activeCategory)
-    expect(nextState1.activeEmergency).toEqual(legacySession1.activeEmergency)
-    expect(nextState1.topicMessages).toEqual(legacySession1.topicMessages)
-    expect(nextState1.lastEvidence).toEqual(legacySession1.lastEvidence)
-    expect(nextState1.lastSearchQueries).toEqual(legacySession1.lastSearchQueries)
+    expect(nextState1.activeCategory).toBe('cardiology')
+    expect(nextState1.activeEmergency).toEqual({
+      category: 'chest_pain',
+      reason: '用户描述胸痛',
+    })
+    expect(nextState1.topicMessages).toEqual(['我胸口有点闷痛'])
+    expect(nextState1.lastEvidence).toEqual([
+      { title: 'Heart Guide', url: 'https://example.com' },
+    ])
+    expect(nextState1.lastSearchQueries).toEqual(['胸痛 原因'])
 
     // Turn 2: non-medical greeting turn, should keep activeCategory & searchQueries
     const turn2Input = {
-      conversationId: convId,
-      ownerId: 'parity-user',
       userMessage: '你好啊',
-      answer: sampleAnswer,
       category: 'greeting' as const,
     }
 
-    const legacySession2 = store.saveTurn(turn2Input)
-    const nextState2 = nextConversationState(nextState1, {
-      userMessage: turn2Input.userMessage,
-      category: turn2Input.category,
-    })
+    const nextState2 = nextConversationState(nextState1, turn2Input)
 
-    expect(nextState2.activeCategory).toBe(legacySession2.activeCategory)
-    expect(nextState2.activeEmergency).toEqual(legacySession2.activeEmergency)
-    expect(nextState2.topicMessages).toEqual(legacySession2.topicMessages)
-    expect(nextState2.lastEvidence).toEqual(legacySession2.lastEvidence)
-    expect(nextState2.lastSearchQueries).toEqual(legacySession2.lastSearchQueries)
+    expect(nextState2.activeCategory).toBe('cardiology')
+    expect(nextState2.activeEmergency).toEqual({
+      category: 'chest_pain',
+      reason: '用户描述胸痛',
+    })
+    expect(nextState2.topicMessages).toEqual(['我胸口有点闷痛'])
+    expect(nextState2.lastEvidence).toEqual([
+      { title: 'Heart Guide', url: 'https://example.com' },
+    ])
+    expect(nextState2.lastSearchQueries).toEqual(['胸痛 原因'])
 
     // Turn 3: emergency cleared (null)
     const nextState3 = nextConversationState(nextState2, {

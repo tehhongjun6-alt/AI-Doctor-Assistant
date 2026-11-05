@@ -180,7 +180,13 @@ alter table public.conversation_messages enable row level security;
 
 **验收重点**：这一步还**不能**改 `app.ts` 的接口行为（那是 4c 的事），原有测试必须全部不动就通过；PG 实现的每条 SQL 都要带 `user_id` 条件，防止读到别人的对话；`appendTurn` 真的用了 transaction
 
-### [ ] 第 4c 步｜多对话：接口（只改后端）
+### [x] 第 4c 步｜多对话：接口（只改后端）
+
+**已实现**（2026-11-05，后端 51 个测试全部通过）：
+- 新增会话管理 REST 接口：`GET /api/conversations`（获取对话列表，上限 3 个，每小时节流清理过期对话）、`GET /api/conversations/:id`（获取对话详情与全部历史消息，跨用户或过期返回 404）、`DELETE /api/conversations/:id`（删除对话，跨用户返回 404，成功返回 204）。
+- 对话上限与额度保护：在调用 Gemini 模型之前完成拦截，满 3 个新对话返回 409 `CONVERSATION_LIMIT_REACHED`，达到 100 条消息返回 409 `CONVERSATION_FULL`，不浪费模型额度。
+- 历史上下文由后端安全接管（忽略客户端 `history` 传参，由 `getContextHistory` 供给），各轮次（含急症与兜底）统一通过 `appendTurn` 写入存储库。
+- 彻底移除旧的 `ConversationStore` 类，并将 `createApp` 依赖完整切换为 `conversationRepository`。
 
 **做法**
 1. `createApp` 的依赖：`conversationStore` 改成 `conversationRepository`。没有注入时，有 `DATABASE_URL` 就用 PG 实现，否则用内存实现并 `console.warn` 一次
@@ -295,8 +301,8 @@ alter table public.conversation_messages enable row level security;
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 4a 步 SQL 已就绪（001_conversations.sql 已生成，users.id 查证为 uuid），等待在 Supabase 执行
-- **下一步**：第 4b 步（多对话：存取数据的代码）
+- **当前进度**：第 4 步已完成（4a 建表 SQL 就绪、4b 存储库双实现完成、4c 多对话 REST 接口与聊天拦截接入，51 个后端测试全过）
+- **下一步**：第 5 步（多对话：前端）
 
 ## 6. 分工
 
