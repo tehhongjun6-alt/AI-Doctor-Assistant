@@ -1,6 +1,16 @@
 import cors from 'cors'
 import { randomUUID } from 'node:crypto'
 import express from 'express'
+import {
+  createAuthRouter,
+  requireAuth,
+  type AuthenticatedRequest,
+} from './auth/authRoutes.js'
+import { RequestRateLimiter } from './auth/requestRateLimiter.js'
+import {
+  createPgUserRepository,
+  type UserRepository,
+} from './auth/userRepository.js'
 import { routeMedicalDataRequest } from './routing/medicalDataRouter.js'
 import {
   buildEmergencyStructuredAnswer,
@@ -37,16 +47,67 @@ type GenerateHealthAnswer = (
   input: HealthConsultationInput,
 ) => ReturnType<typeof generateGeminiHealthAnswer>
 type RetrieveMedicalData = (input: MedicalDataRequest) => Promise<MedicalDataResult>
+type RouteMedicalData = typeof routeMedicalDataRequest
 
 interface AppDependencies {
   searchHospitals?: SearchHospitals
   generateHealthAnswer?: GenerateHealthAnswer
   retrieveMedicalData?: RetrieveMedicalData
   conversationStore?: ConversationStore
+  userRepository?: UserRepository
+  routeMedicalData?: RouteMedicalData
+  chatRateLimiter?: RequestRateLimiter
 }
 
 function isValidNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+interface ChatResponder {
+  /** 流式模式下推送当前已生成的 summary；普通模式为 undefined */
+  delta?: (summary: string) => void
+  send: (status: number, body: unknown) => void
+}
+
+// 普通模式返回 JSON；流式模式使用 SSE：delta 事件推送摘要，final 事件推送经过安全检查的完整结果
+function createChatResponder(
+  response: express.Response,
+  mode: 'json' | 'stream',
+): ChatResponder {
+  if (mode === 'json') {
+    return { send: (status, body) => response.status(status).json(body) }
+  }
+
+  let started = false
+  function start() {
+    if (started) return
+    started = true
+    response.status(200)
+    response.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+    response.setHeader('Cache-Control', 'no-cache, no-transform')
+    response.setHeader('X-Accel-Buffering', 'no')
+    response.flushHeaders()
+  }
+  function write(event: string, data: unknown) {
+    response.write(`event: ${event}
+data: ${JSON.stringify(data)}
+
+`)
+  }
+
+  return {
+    delta(summary) {
+      if (response.writableEnded) return
+      start()
+      write('delta', { summary })
+    },
+    send(status, body) {
+      if (response.writableEnded) return
+      start()
+      write('final', { status, body })
+      response.end()
+    },
+  }
 }
 
 export function createApp(dependencies: AppDependencies = {}) {
@@ -59,6 +120,10 @@ export function createApp(dependencies: AppDependencies = {}) {
     dependencies.retrieveMedicalData ?? retrieveMedicalData
   const conversationStore =
     dependencies.conversationStore ?? new ConversationStore()
+  const routeMedicalData =
+    dependencies.routeMedicalData ?? routeMedicalDataRequest
+  const chatRateLimiter =
+    dependencies.chatRateLimiter ?? new RequestRateLimiter()
   const frontendOriginsEnv = process.env.FRONTEND_ORIGINS?.trim()
 
   app.use(
@@ -87,16 +152,42 @@ export function createApp(dependencies: AppDependencies = {}) {
     }),
   )
   app.use(express.json({ limit: '100kb' }))
+  // Render 位于反向代理之后，读取真实客户端 IP（用于登录失败限制）
+  app.set('trust proxy', 1)
 
   app.get('/health', (_request, response) => {
     response.json({ status: 'ok' })
   })
 
-  app.post('/api/chat', async (request, response) => {
+  app.use(
+    '/api/auth',
+    createAuthRouter(dependencies.userRepository ?? createPgUserRepository()),
+  )
+
+  const handleChat =
+    (mode: 'json' | 'stream') =>
+    async (request: AuthenticatedRequest, response: express.Response) => {
+    const reply = createChatResponder(response, mode)
+
+    const userId = request.user?.sub
+    const retryAfter = chatRateLimiter.consume(userId ?? request.ip ?? 'anonymous')
+    if (retryAfter > 0) {
+      response.setHeader('Retry-After', String(retryAfter))
+      reply.send(429, {
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: `提问太频繁了，请 ${retryAfter} 秒后再试。`,
+          retryAfter,
+        },
+      })
+      return
+    }
+
     const validation = validateChatRequest(request.body)
 
     if (!validation.valid) {
-      response.status(400).json({
+      reply.send(400, {
         success: false,
         error: {
           code: 'INVALID_CHAT_REQUEST',
@@ -108,12 +199,18 @@ export function createApp(dependencies: AppDependencies = {}) {
     }
 
     const validChat = validation.value
-    const conversationId = validChat.conversationId ?? randomUUID()
+    // 会话 ID 若属于其他用户，则为当前用户开启新会话，避免读取他人对话
+    const conversationId =
+      validChat.conversationId &&
+      !conversationStore.isOwnedByOther(validChat.conversationId, userId)
+        ? validChat.conversationId
+        : randomUUID()
     const language = validChat.language ?? 'zh'
-    const session = conversationStore.getSession(conversationId)
+    const session = conversationStore.getSession(conversationId, userId)
     const history = conversationStore.getMergedHistory(
       conversationId,
       validChat.history,
+      userId,
     )
 
     const emergency = checkEmergencyRisk(
@@ -153,6 +250,7 @@ export function createApp(dependencies: AppDependencies = {}) {
 
       conversationStore.saveTurn({
         conversationId,
+        ownerId: userId,
         userMessage: validChat.message,
         answer: emergencyAnswer,
         clientHistory: validChat.history,
@@ -160,7 +258,7 @@ export function createApp(dependencies: AppDependencies = {}) {
         activeEmergency: { category, reason },
       })
 
-      response.json({
+      reply.send(200, {
         success: true,
         data: {
           type: 'emergency',
@@ -187,7 +285,7 @@ export function createApp(dependencies: AppDependencies = {}) {
     }
 
     try {
-      const medicalDataRoute = await routeMedicalDataRequest(
+      const medicalDataRoute = await routeMedicalData(
         validation.value.message,
         {
           history,
@@ -231,6 +329,7 @@ export function createApp(dependencies: AppDependencies = {}) {
             language,
             history,
             mode: 'direct_model',
+            onSummaryDelta: reply.delta,
           })
         } else {
           medicalData = await getMedicalData({
@@ -251,11 +350,18 @@ export function createApp(dependencies: AppDependencies = {}) {
               medicalDataRoute.route === 'medical_qa'
                 ? 'medical_qa'
                 : 'medical_api',
+            onSummaryDelta: reply.delta,
           })
-          sources = medicalData.evidence.map((item) => ({
-            title: item.title,
-            url: item.url,
-          }))
+          // 来源去重，供前端展示参考资料
+          const seenUrls = new Set<string>()
+          sources = medicalData.evidence
+            .filter((item) => {
+              if (!item.url || seenUrls.has(item.url)) return false
+              seenUrls.add(item.url)
+              return true
+            })
+            .slice(0, 5)
+            .map((item) => ({ title: item.title, url: item.url }))
         }
       } catch (modelError) {
         if (
@@ -289,6 +395,7 @@ export function createApp(dependencies: AppDependencies = {}) {
       if (safetyCheck.passed) {
         conversationStore.saveTurn({
           conversationId,
+          ownerId: userId,
           userMessage: validation.value.message,
           answer,
           clientHistory: validation.value.history,
@@ -303,7 +410,7 @@ export function createApp(dependencies: AppDependencies = {}) {
         })
       }
 
-      response.json({
+      reply.send(200, {
         success: true,
         data: {
           ...(isLayer3Emergency
@@ -320,7 +427,8 @@ export function createApp(dependencies: AppDependencies = {}) {
           messageId: randomUUID(),
           answer,
           medicalDataRoute,
-          medicalData,
+          // 原始 evidence 体积大且前端不使用，只返回状态
+          medicalDataStatus: medicalData?.status,
           sources,
           safetyCheck: {
             passed: safetyCheck.passed,
@@ -361,7 +469,7 @@ export function createApp(dependencies: AppDependencies = {}) {
         } as const
         const modelError = errorResponses[error.code]
 
-        response.status(modelError.status).json({
+        reply.send(modelError.status, {
           success: false,
           error: {
             code: modelError.code,
@@ -372,7 +480,7 @@ export function createApp(dependencies: AppDependencies = {}) {
       }
 
       console.error('Health consultation failed', error)
-      response.status(502).json({
+      reply.send(502, {
         success: false,
         error: {
           code: 'AI_MODEL_UNAVAILABLE',
@@ -380,9 +488,12 @@ export function createApp(dependencies: AppDependencies = {}) {
         },
       })
     }
-  })
+  }
 
-  app.post('/api/hospitals/nearby', async (request, response) => {
+  app.post('/api/chat', requireAuth, handleChat('json'))
+  app.post('/api/chat/stream', requireAuth, handleChat('stream'))
+
+  app.post('/api/hospitals/nearby', requireAuth, async (request, response) => {
     const { latitude, longitude, radius = 5000 } = request.body ?? {}
 
     if (

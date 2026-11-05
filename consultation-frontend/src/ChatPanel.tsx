@@ -1,4 +1,11 @@
-import { useState, type FormEvent, useEffect, useRef } from 'react'
+import {
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  useEffect,
+  useRef,
+} from 'react'
+import { authFetch } from './auth'
 import { translations, type Language } from './i18n'
 
 type Urgency = 'low' | 'medium' | 'high' | 'emergency'
@@ -15,6 +22,11 @@ interface HealthAnswer {
   disclaimer: string
 }
 
+interface Source {
+  title: string
+  url: string
+}
+
 interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
@@ -22,6 +34,7 @@ interface ChatMessage {
   timestamp?: string
   answer?: HealthAnswer
   emergency?: boolean
+  sources?: Source[]
 }
 
 interface ChatApiResponse {
@@ -30,6 +43,7 @@ interface ChatApiResponse {
     type?: 'emergency'
     conversationId?: string
     answer?: HealthAnswer
+    sources?: Source[]
     emergency?: {
       reason?: string
       action?: string
@@ -46,13 +60,45 @@ interface ChatPanelProps {
   onChangeLang: (lang: Language) => void
   onOpenMobileMenu: () => void
   isMobileMenuOpen?: boolean
+  /** 用于在本次浏览器会话中保存对话（按用户区分） */
+  storageKey?: string
 }
 
-const apiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ||
-  (import.meta.env.DEV
-    ? 'http://127.0.0.1:8000'
-    : 'https://ai-doctor-assistant-79tt.onrender.com')
+interface StoredChat {
+  messages: ChatMessage[]
+  conversationId?: string
+}
+
+function createWelcomeMessage(): ChatMessage {
+  return {
+    id: 'welcome',
+    role: 'assistant',
+    content: translations.zh.welcomeMessage,
+    timestamp: getCurrentTime(),
+  }
+}
+
+function loadStoredChat(storageKey?: string): StoredChat | null {
+  if (!storageKey) return null
+  try {
+    const raw = sessionStorage.getItem(storageKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as StoredChat
+    return Array.isArray(parsed.messages) && parsed.messages.length > 0
+      ? parsed
+      : null
+  } catch {
+    return null
+  }
+}
+
+function safeHostname(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
 
 function createMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -100,32 +146,132 @@ function AnswerSection({ title, items }: { title: string; items: string[] }) {
   )
 }
 
+async function readChatStream(
+  response: Response,
+  onSummary: (summary: string) => void,
+): Promise<{ ok: boolean; result: ChatApiResponse }> {
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('stream unavailable')
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let final: { status: number; body: ChatApiResponse } | undefined
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (value) buffer += decoder.decode(value, { stream: true })
+    let boundary = buffer.indexOf('\n\n')
+    while (boundary !== -1) {
+      const block = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      boundary = buffer.indexOf('\n\n')
+      const event = block.match(/^event: (.+)$/m)?.[1]
+      const data = block.match(/^data: (.+)$/m)?.[1]
+      if (!event || !data) continue
+      const parsed = JSON.parse(data)
+      if (event === 'delta' && typeof parsed.summary === 'string') {
+        onSummary(parsed.summary)
+      } else if (event === 'final') {
+        final = parsed
+      }
+    }
+    if (done) break
+  }
+
+  if (!final) throw new TypeError('stream ended early')
+  return { ok: final.status < 400, result: final.body }
+}
+
+/** 优先使用流式接口；后端尚未支持时自动回退到普通接口 */
+async function requestChat(
+  body: string,
+  onSummary: (summary: string) => void,
+): Promise<{ ok: boolean; result: ChatApiResponse }> {
+  const init = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  }
+  const streamResponse = await authFetch('/api/chat/stream', init)
+  const contentType = streamResponse.headers?.get('Content-Type') ?? ''
+
+  if (streamResponse.ok && contentType.includes('text/event-stream')) {
+    return readChatStream(streamResponse, onSummary)
+  }
+
+  const response =
+    streamResponse.status === 404
+      ? await authFetch('/api/chat', init)
+      : streamResponse
+  const result = (await response
+    .json()
+    .catch(() => ({ success: false }))) as ChatApiResponse
+  return { ok: response.ok, result }
+}
+
 function ChatPanel({
   onOpenMap,
   lang,
   onChangeLang,
   onOpenMobileMenu,
   isMobileMenuOpen,
+  storageKey,
 }: ChatPanelProps) {
   const t = translations[lang]
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: translations.zh.welcomeMessage,
-      timestamp: '10:24',
-    },
-  ])
+  const [initialChat] = useState(() => loadStoredChat(storageKey))
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    () => initialChat?.messages ?? [createWelcomeMessage()],
+  )
   const [input, setInput] = useState('')
-  const [conversationId, setConversationId] = useState<string>()
+  const [conversationId, setConversationId] = useState<string | undefined>(
+    initialChat?.conversationId,
+  )
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string>()
   const [retryMessage, setRetryMessage] = useState<string>()
+  const [streamingText, setStreamingText] = useState<string>()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const hasConversation = messages.some((message) => message.role === 'user')
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isSending])
+    messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' })
+  }, [messages, isSending, streamingText])
+
+  // 刷新页面时保留当前对话（仅保存在本标签页的 sessionStorage）
+  useEffect(() => {
+    if (!storageKey) return
+    try {
+      if (hasConversation) {
+        sessionStorage.setItem(
+          storageKey,
+          JSON.stringify({ messages: messages.slice(-40), conversationId }),
+        )
+      } else {
+        sessionStorage.removeItem(storageKey)
+      }
+    } catch {
+      /* 隐私模式下无法保存 */
+    }
+  }, [messages, conversationId, storageKey, hasConversation])
+
+  // 输入框随内容自动增高
+  useEffect(() => {
+    const element = inputRef.current
+    if (!element) return
+    element.style.height = 'auto'
+    element.style.height = `${Math.min(element.scrollHeight, 160)}px`
+  }, [input])
+
+  function handleNewChat() {
+    if (isSending) return
+    if (hasConversation && !window.confirm(t.newChatConfirm)) return
+    setMessages([createWelcomeMessage()])
+    setConversationId(undefined)
+    setError(undefined)
+    setRetryMessage(undefined)
+    setInput('')
+    inputRef.current?.focus()
+  }
 
   async function sendMessage(message: string, appendUserMessage: boolean) {
     const history = messages.slice(-20).map((item) => ({
@@ -155,19 +301,19 @@ function ChatPanel({
     setRetryMessage(undefined)
 
     try {
-      const response = await fetch(`${apiBaseUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId,
-          message,
-          language: lang,
-          history,
-        }),
+      const requestBody = JSON.stringify({
+        conversationId,
+        message,
+        language: lang,
+        history,
       })
-      const result = (await response.json()) as ChatApiResponse
+      const { ok, result } = await requestChat(requestBody, (summary) => {
+        // 流式：先显示正在生成的摘要文字
+        setStreamingText(summary)
+      })
+      setStreamingText(undefined)
 
-      if (!response.ok || !result.success || !result.data) {
+      if (!ok || !result.success || !result.data) {
         throw new Error(result.error?.message ?? t.errorDefault)
       }
 
@@ -208,14 +354,18 @@ function ChatPanel({
           role: 'assistant',
           content: answerData.summary ?? '',
           answer: answerData,
+          sources: result.data?.sources,
           timestamp: responseTime,
         },
       ])
     } catch (requestError) {
+      setStreamingText(undefined)
       setError(
-        requestError instanceof Error
-          ? requestError.message
-          : t.errorDefault,
+        requestError instanceof TypeError
+          ? t.networkError
+          : requestError instanceof Error && requestError.message
+            ? requestError.message
+            : t.errorDefault,
       )
       setRetryMessage(message)
     } finally {
@@ -231,6 +381,23 @@ function ChatPanel({
 
     setInput('')
     void sendMessage(message, true)
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter 发送，Shift+Enter 换行；输入法选词时不触发发送
+    if (
+      event.key === 'Enter' &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault()
+      event.currentTarget.form?.requestSubmit()
+    }
+  }
+
+  function handleQuickPrompt(prompt: string) {
+    if (isSending) return
+    void sendMessage(prompt, true)
   }
 
   function renderSections(answer: HealthAnswer) {
@@ -318,6 +485,30 @@ function ChatPanel({
 
         {/* 右上角：中英切换 + 手机端加号菜单按钮 */}
         <div className="chat-header-actions">
+          <button
+            type="button"
+            className="new-chat-btn"
+            onClick={handleNewChat}
+            disabled={isSending || !hasConversation}
+            title={t.newChat}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              width="16"
+              height="16"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zM19.5 13.5V19.5a1.5 1.5 0 01-1.5 1.5H4.5A1.5 1.5 0 013 19.5V6a1.5 1.5 0 011.5-1.5h6"
+              />
+            </svg>
+            <span className="new-chat-label">{t.newChat}</span>
+          </button>
           <div
             className="lang-switch-pill"
             role="group"
@@ -365,7 +556,11 @@ function ChatPanel({
       </header>
 
       {/* 消息对话流 */}
-      <div className="messages-stream" aria-label="对话内容" aria-live="polite">
+      <div
+        className="messages-stream"
+        aria-label={lang === 'zh' ? '对话内容' : 'Conversation'}
+        aria-live="polite"
+      >
         {messages.map((message) => {
           const isEmergency = Boolean(
             message.emergency || message.answer?.urgency === 'emergency',
@@ -417,8 +612,19 @@ function ChatPanel({
                   className={`assistant-bubble ${isEmergency ? 'emergency-card' : ''}`}
                 >
                   <div className="summary-section">
-                    {isEmergency && (
+                    {isEmergency ? (
                       <div className="emergency-badge">{t.emergencyBadge}</div>
+                    ) : (
+                      message.answer &&
+                      (message.answer.possibleCauses.length > 0 ||
+                        message.answer.seekCareWhen.length > 0) && (
+                        <span
+                          className={`urgency-chip urgency-${message.answer.urgency}`}
+                        >
+                          <span className="urgency-dot" aria-hidden="true" />
+                          {t.urgencyLabel[message.answer.urgency]}
+                        </span>
+                      )
                     )}
                     {message.answer &&
                       (message.answer.possibleCauses.length > 0 ||
@@ -459,6 +665,29 @@ function ChatPanel({
                         )}
                       </>
                     ))}
+
+                  {message.sources && message.sources.length > 0 && (
+                    <div className="sources-section">
+                      <span className="sources-title">{t.sourcesTitle}</span>
+                      <div className="sources-list">
+                        {message.sources.map((source) => (
+                          <a
+                            key={source.url}
+                            className="source-chip"
+                            href={source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={source.title}
+                          >
+                            <span className="source-title">{source.title}</span>
+                            <span className="source-host">
+                              {safeHostname(source.url)}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="message-meta assistant-meta">
                   <span className="message-time">
@@ -470,7 +699,44 @@ function ChatPanel({
           )
         })}
 
-        {isSending && (
+        {!hasConversation && !isSending && (
+          <div className="quick-start">
+            <span className="quick-start-title">{t.quickStartTitle}</span>
+            <div className="quick-start-grid">
+              {t.quickPrompts.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  className="quick-prompt-chip"
+                  onClick={() => handleQuickPrompt(prompt)}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {isSending && streamingText && (
+          <div className="message-row assistant-row">
+            <div
+              className="doctor-avatar-circle assistant-avatar"
+              aria-hidden="true"
+            >
+              <span className="doctor-avatar-head"></span>
+            </div>
+            <div className="assistant-bubble-wrap">
+              <div className="assistant-bubble streaming-bubble">
+                <p className="summary-body">
+                  {renderFormattedText(streamingText)}
+                  <span className="stream-cursor" aria-hidden="true" />
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isSending && !streamingText && (
           <div className="message-row assistant-row typing-row">
             <div
               className="doctor-avatar-circle assistant-avatar"
@@ -478,10 +744,11 @@ function ChatPanel({
             >
               <span className="doctor-avatar-head"></span>
             </div>
-            <div className="typing-bubble" aria-label="Thinking">
+            <div className="typing-bubble" role="status" aria-label={t.thinking}>
               <span className="dot"></span>
               <span className="dot"></span>
               <span className="dot"></span>
+              <span className="typing-label">{t.thinking}</span>
             </div>
           </div>
         )}
@@ -507,39 +774,17 @@ function ChatPanel({
         )}
 
         <form className="composer-pill" onSubmit={handleSubmit}>
-          <button
-            type="button"
-            className="composer-icon-btn"
-            title={t.addPromptTitle}
-            onClick={() => {
-              setInput((prev) => (prev ? prev : t.addPromptPrefix))
-            }}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              width="20"
-              height="20"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-              />
-            </svg>
-          </button>
-
-          <input
+          <textarea
             id="message-input"
-            type="text"
+            ref={inputRef}
+            rows={1}
             className="composer-input"
             aria-label={t.inputPlaceholder}
             placeholder={t.inputPlaceholder}
             value={input}
-            disabled={isSending}
+            maxLength={2000}
             onChange={(event) => setInput(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
             onBlur={() => {
               window.scrollTo(0, 0)
             }}
@@ -556,6 +801,7 @@ function ChatPanel({
             </svg>
           </button>
         </form>
+        <p className="composer-hint">{t.composerHint}</p>
       </footer>
     </div>
   )

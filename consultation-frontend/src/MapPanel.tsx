@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { authFetch } from './auth'
 import { translations, type Language } from './i18n'
 
 maplibregl.setWorkerUrl(
@@ -61,6 +62,19 @@ function getErrorMessage(error: unknown, lang: Language) {
   return t.errorMapDefault
 }
 
+// 使用 DOM 节点而非 HTML 字符串，避免第三方地点数据注入脚本（XSS）
+function createHospitalPopup(hospital: Hospital) {
+  const container = document.createElement('div')
+  const name = document.createElement('div')
+  name.style.cssText = 'font-weight:700;font-size:13px;color:#1e293b;'
+  name.textContent = hospital.name
+  const address = document.createElement('div')
+  address.style.cssText = 'font-size:11px;color:#64748b;margin-top:2px;'
+  address.textContent = hospital.address
+  container.append(name, address)
+  return container
+}
+
 export default function MapPanel({
   onBackToChat,
   isVisible,
@@ -73,11 +87,6 @@ export default function MapPanel({
   const apiKey =
     import.meta.env.VITE_GEOAPIFY_API_KEY ||
     'f5e42a9173fd49248e434af33e178bca'
-  const apiBaseUrl =
-    import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ||
-    (import.meta.env.DEV
-      ? 'http://127.0.0.1:8000'
-      : 'https://ai-doctor-assistant-79tt.onrender.com')
   const mapElement = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<maplibregl.Map | null>(null)
   const userMarkerRef = useRef<maplibregl.Marker | null>(null)
@@ -99,7 +108,7 @@ export default function MapPanel({
   }, [isVisible])
 
   async function loadHospitals(map: maplibregl.Map, center: [number, number]) {
-    const response = await fetch(`${apiBaseUrl}/api/hospitals/nearby`, {
+    const response = await authFetch('/api/hospitals/nearby', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -129,8 +138,8 @@ export default function MapPanel({
       const marker = new maplibregl.Marker({ color: '#dc2626' })
         .setLngLat([hospital.longitude, hospital.latitude])
         .setPopup(
-          new maplibregl.Popup({ offset: 12 }).setHTML(
-            `<div style="font-weight:700;font-size:13px;color:#1e293b;">${hospital.name}</div><div style="font-size:11px;color:#64748b;margin-top:2px;">${hospital.address}</div>`,
+          new maplibregl.Popup({ offset: 12 }).setDOMContent(
+            createHospitalPopup(hospital),
           ),
         )
         .addTo(map)
@@ -207,7 +216,7 @@ export default function MapPanel({
       userMarkerRef.current = null
       markersRef.current.clear()
     }
-  }, [apiBaseUrl, apiKey])
+  }, [apiKey])
 
   // 手动点击刷新按钮时才触发重新定位和拉取
   async function handleManualRefresh() {

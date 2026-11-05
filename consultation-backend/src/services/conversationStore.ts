@@ -15,6 +15,8 @@ export interface ActiveEmergencyState {
 
 export interface ConversationSession {
   conversationId: string
+  /** 会话所属用户；其他用户无法读取或续写该会话 */
+  ownerId?: string
   history: ChatHistoryMessage[]
   activeCategory?: ActiveMedicalCategory
   activeEmergency?: ActiveEmergencyState
@@ -26,6 +28,7 @@ export interface ConversationSession {
 const SESSION_TTL_MS = 30 * 60 * 1000
 const MAX_HISTORY_MESSAGES = 20
 const MAX_TOPIC_MESSAGES = 6
+const MAX_SESSIONS = 5000
 
 export function formatAnswerForHistory(answer: ChatAnswer): string {
   const parts = [answer.summary]
@@ -52,17 +55,29 @@ export class ConversationStore {
     }
   }
 
-  getSession(conversationId?: string): ConversationSession | undefined {
+  getSession(
+    conversationId?: string,
+    ownerId?: string,
+  ): ConversationSession | undefined {
     this.cleanupExpired()
     if (!conversationId) return undefined
-    return this.sessions.get(conversationId)
+    const session = this.sessions.get(conversationId)
+    if (session?.ownerId && session.ownerId !== ownerId) return undefined
+    return session
+  }
+
+  /** 会话 ID 是否已被其他用户占用 */
+  isOwnedByOther(conversationId: string, ownerId?: string) {
+    const session = this.sessions.get(conversationId)
+    return Boolean(session?.ownerId && session.ownerId !== ownerId)
   }
 
   getMergedHistory(
     conversationId: string | undefined,
     clientHistory: ChatHistoryMessage[] = [],
+    ownerId?: string,
   ): ChatHistoryMessage[] {
-    const session = this.getSession(conversationId)
+    const session = this.getSession(conversationId, ownerId)
     if (session && session.history.length > 0) {
       return session.history.slice(-MAX_HISTORY_MESSAGES)
     }
@@ -71,6 +86,7 @@ export class ConversationStore {
 
   saveTurn(input: {
     conversationId: string
+    ownerId?: string
     userMessage: string
     answer: ChatAnswer
     clientHistory?: ChatHistoryMessage[]
@@ -79,7 +95,11 @@ export class ConversationStore {
     activeEmergency?: ActiveEmergencyState | null
   }): ConversationSession {
     this.cleanupExpired()
-    const existing = this.sessions.get(input.conversationId)
+    const stored = this.sessions.get(input.conversationId)
+    const existing =
+      stored && (!stored.ownerId || stored.ownerId === input.ownerId)
+        ? stored
+        : undefined
     const baseHistory = existing
       ? existing.history
       : (input.clientHistory ?? [])
@@ -117,6 +137,7 @@ export class ConversationStore {
 
     const session: ConversationSession = {
       conversationId: input.conversationId,
+      ownerId: input.ownerId,
       history: updatedHistory,
       activeCategory,
       activeEmergency,
@@ -125,7 +146,14 @@ export class ConversationStore {
       updatedAt: Date.now(),
     }
 
+    // Map 保持插入顺序：先删除再写入，使最近活跃的会话排在末尾
+    this.sessions.delete(input.conversationId)
     this.sessions.set(input.conversationId, session)
+    while (this.sessions.size > MAX_SESSIONS) {
+      const oldest = this.sessions.keys().next().value
+      if (oldest === undefined) break
+      this.sessions.delete(oldest)
+    }
     return session
   }
 }

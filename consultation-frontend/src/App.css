@@ -1579,3 +1579,467 @@ body {
   color: #94a3b8;
   line-height: 1.4;
 }
+
+/* ==========================================================================
+   9. 注册 / 登录（邮箱 + 密码）与账号栏
+   ========================================================================== */
+
+.auth-lang-row {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  margin: -18px -6px 6px 0;
+}
+
+.auth-tabs {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 18px;
+  background: #f1f5f9;
+  border-radius: 12px;
+}
+
+.auth-tab {
+  height: 36px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-tab.active {
+  background: #ffffff;
+  color: #1d4ed8;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+.auth-field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.login-gate-input.auth-input {
+  text-align: left;
+  letter-spacing: normal;
+}
+
+.auth-notice {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.login-gate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.auth-link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #2563eb;
+  font-size: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.auth-link-btn:hover {
+  text-decoration: underline;
+}
+
+.account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.account-email {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: #475569;
+}
+
+.logout-btn {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid #fecaca;
+  background: #ffffff;
+  color: #dc2626;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.logout-btn:hover {
+  background: #fef2f2;
+}
+
+/* ==========================================================================
+   9. 问诊体验增强：新对话、快捷提问、风险等级、参考资料、多行输入
+   ========================================================================== */
+
+/* 新对话按钮 */
+.new-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #475569;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.new-chat-btn:hover:not(:disabled) {
+  border-color: #93c5fd;
+  color: #2563eb;
+  background: #f5f9ff;
+}
+
+.new-chat-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 快捷提问卡片 */
+.quick-start {
+  margin: 4px 0 0 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: fade-up 0.35s ease both;
+}
+
+.quick-start-title {
+  font-size: 12.5px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.quick-start-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 640px;
+}
+
+.quick-prompt-chip {
+  text-align: left;
+  padding: 11px 14px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 13.5px;
+  line-height: 1.45;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(70, 95, 140, 0.04);
+  transition: all 0.18s ease;
+}
+
+.quick-prompt-chip:hover {
+  border-color: #93c5fd;
+  background: #f5f9ff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.1);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 新消息进入动画 */
+.message-row {
+  animation: fade-up 0.25s ease both;
+}
+
+/* 风险等级标签 */
+.urgency-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  margin-bottom: 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.urgency-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.urgency-low {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+.urgency-medium {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.urgency-high {
+  background: #fff7ed;
+  color: #c2410c;
+  border-color: #fdba74;
+}
+
+.urgency-emergency {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+/* 回答分区：用浅色小卡片代替细分割线，层次更清晰 */
+.answer-section {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-top: none;
+  background: #f8fafc;
+  border-radius: 12px;
+}
+
+.answer-section ul {
+  gap: 4px;
+}
+
+.answer-section li {
+  position: relative;
+  padding-left: 14px;
+}
+
+.answer-section li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.72em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #93c5fd;
+}
+
+.emergency-action-zone .answer-section {
+  background: transparent;
+  padding: 10px 0 0;
+  border-radius: 0;
+}
+
+.emergency-action-zone .answer-section li::before {
+  background: #f87171;
+}
+
+/* 参考资料 */
+.sources-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed #e2e8f0;
+  white-space: normal;
+}
+
+.sources-title {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.sources-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.source-chip {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 220px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  text-decoration: none;
+  line-height: 1.3;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.source-chip:hover {
+  border-color: #93c5fd;
+  background: #f5f9ff;
+}
+
+.source-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1d4ed8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-host {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* AI 思考中 */
+.typing-label {
+  margin-left: 6px;
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+/* 多行输入框 */
+.composer-pill {
+  align-items: flex-end;
+  border-radius: 24px;
+  padding: 6px 6px 6px 18px;
+}
+
+textarea.composer-input {
+  resize: none;
+  font-family: inherit;
+  line-height: 1.5;
+  padding: 9px 0;
+  min-height: 40px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.composer-hint {
+  margin: 6px 0 0;
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* 键盘可访问性：清晰的焦点框 */
+button:focus-visible,
+a:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.composer-input:focus-visible {
+  outline: none;
+}
+
+@media (max-width: 900px) {
+  .new-chat-label {
+    display: none;
+  }
+
+  .new-chat-btn {
+    padding: 7px;
+  }
+
+  .quick-start {
+    margin-left: 0;
+  }
+
+  .quick-start-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .composer-hint {
+    display: none;
+  }
+
+  .composer-pill {
+    padding: 4px 4px 4px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.map-lazy-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #64748b;
+  font-size: 13.5px;
+}
+
+/* 流式输出：正在生成的文字末尾显示闪烁光标 */
+.streaming-bubble {
+  animation: none;
+}
+
+.stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: #6c86fa;
+  animation: cursor-blink 1s steps(1) infinite;
+}
+
+@keyframes cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}

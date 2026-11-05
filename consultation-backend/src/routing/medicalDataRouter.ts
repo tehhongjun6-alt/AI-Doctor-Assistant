@@ -1,6 +1,7 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import type { EmergencyCategory } from '../safety/emergencyCheck.js'
 import type { ChatHistoryMessage } from '../schemas/chat.js'
+import { heuristicRoute } from './heuristicRouter.js'
 import type {
   MedicalDataCategory,
   MedicalDataRouteResult,
@@ -137,10 +138,25 @@ function isRetriableError(error: unknown) {
   )
 }
 
+function readPositiveNumber(value: unknown, fallback: number) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function stripConfidence(
+  result: ReturnType<typeof heuristicRoute>,
+): MedicalDataRouteResult {
+  const { confidence: _confidence, ...route } = result
+  return route
+}
+
 export function createMedicalDataRouter(options: {
   apiKey?: string
   model?: string
   timeoutMs?: number
+  maxAttempts?: number
+  /** 规则高把握时跳过模型（默认开启，可用 ROUTER_RULE_FIRST=false 关闭） */
+  ruleFirst?: boolean
 } = {}) {
   const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY
   const primaryModel =
@@ -148,13 +164,16 @@ export function createMedicalDataRouter(options: {
   const candidateModels = options.model
     ? [options.model]
     : Array.from(new Set([primaryModel, ...fallbackModels]))
-  const configuredTimeout = Number(
-    options.timeoutMs ?? process.env.GEMINI_TIMEOUT_MS ?? 30000,
+  // 路由只输出一个很短的分类结果，不需要等 30 秒；超时直接用规则兜底
+  const timeoutMs = readPositiveNumber(
+    options.timeoutMs ?? process.env.GEMINI_ROUTER_TIMEOUT_MS,
+    5000,
   )
-  const timeoutMs =
-    Number.isFinite(configuredTimeout) && configuredTimeout > 0
-      ? configuredTimeout
-      : 30000
+  const maxAttempts = Math.floor(
+    readPositiveNumber(options.maxAttempts ?? process.env.GEMINI_ROUTER_MAX_ATTEMPTS, 2),
+  )
+  const ruleFirst =
+    options.ruleFirst ?? process.env.ROUTER_RULE_FIRST?.toLowerCase() !== 'false'
   let client: GoogleGenAI | undefined
 
   return async function routeMedicalDataRequest(
@@ -162,13 +181,16 @@ export function createMedicalDataRouter(options: {
     context: MedicalDataRouteContext = {},
   ): Promise<MedicalDataRouteResult> {
     const normalizedMessage = message.trim()
+    const ruleResult = heuristicRoute(normalizedMessage, context)
 
     if (!apiKey) {
-      return {
-        route: 'direct_model',
-        category: 'unknown',
-        reason: '未配置模型密钥，默认进入 direct_model。',
-      }
+      return stripConfidence(ruleResult)
+    }
+
+    // 规则优先：明确的寒暄 / 症状 / 知识提问直接采用，省去一次模型调用。
+    // 处于急症跟进中时一律交给模型，保证持续急救指导。
+    if (ruleFirst && ruleResult.confidence === 'high' && !context.activeEmergency) {
+      return stripConfidence(ruleResult)
     }
 
     client ??= new GoogleGenAI({ apiKey, httpOptions: { timeout: timeoutMs } })
@@ -188,11 +210,11 @@ export function createMedicalDataRouter(options: {
 
     const promptContent = `${emergencyHint}${topicHint}${recentHistoryText ? `Recent history:\n${recentHistoryText}\n\n` : ''}Current Message: ${normalizedMessage}`
 
-    for (let i = 0; i < candidateModels.length; i += 1) {
-      const candidateModel = candidateModels[i]
+    const attemptModels = candidateModels.slice(0, Math.max(1, maxAttempts))
+    for (let i = 0; i < attemptModels.length; i += 1) {
       try {
         const response = await client.models.generateContent({
-          model: candidateModel,
+          model: attemptModels[i],
           contents: promptContent,
           config: {
             systemInstruction: routerSystemPrompt,
@@ -262,7 +284,7 @@ export function createMedicalDataRouter(options: {
           reason: parsed.reason ?? '模型判断无需查询外部医学资料，直接由模型回复。',
         }
       } catch (error) {
-        const hasMoreModels = i < candidateModels.length - 1
+        const hasMoreModels = i < attemptModels.length - 1
         if (hasMoreModels && isRetriableError(error)) {
           continue
         }
@@ -270,11 +292,8 @@ export function createMedicalDataRouter(options: {
       }
     }
 
-    return {
-      route: 'direct_model',
-      category: 'unknown',
-      reason: '路由回退至 direct_model 直接由模型回复。',
-    }
+    // 所有模型都失败：使用规则兜底，避免把症状问诊误判为闲聊
+    return stripConfidence(ruleResult)
   }
 }
 

@@ -9,7 +9,7 @@ Node.js, Express and TypeScript API for nearby hospital search with Geoapify.
 3. Run `npm install`.
 4. Run `npm run dev`.
 
-The API starts on `http://127.0.0.1:8000` by default.
+The API starts on `http://127.0.0.1:8002` by default.
 
 ## Endpoints
 

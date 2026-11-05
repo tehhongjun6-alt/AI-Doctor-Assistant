@@ -14,6 +14,8 @@ export const translations = {
     navMapDesc: '自动搜索当前位置 5km 内医院',
     mobileMenuTitle: '切换服务功能',
     closeMenu: '关闭菜单',
+    logout: '退出登录',
+    sessionExpired: '登录已过期，请重新登录。',
 
     // Chat Panel
     headerDoctorName: 'AI 医生助手',
@@ -38,6 +40,20 @@ export const translations = {
     retryBtn: '重试',
     errorDefault: '暂时无法取得 AI 回答。',
     errorIncomplete: 'AI 返回内容不完整。',
+    newChat: '新对话',
+    newChatConfirm: '开始新对话？当前对话记录将被清空。',
+    quickStartTitle: '常见问题，点击即可快速提问',
+    quickPrompts: [
+      '我发烧 38.5 度，头痛两天了',
+      '喉咙痛、咳嗽，该怎么缓解？',
+      'Panadol 和布洛芬有什么区别？',
+      '骨痛热症有哪些危险信号？',
+    ],
+    sourcesTitle: '📚 参考资料',
+    urgencyLabel: { low: '风险较低', medium: '建议留意', high: '建议尽快就医', emergency: '紧急' },
+    composerHint: 'Enter 发送 · Shift + Enter 换行',
+    thinking: 'AI 正在分析...',
+    networkError: '无法连接服务器，请检查网络后重试。',
 
     // Map Panel
     backToChat: '返回问诊',
@@ -74,6 +90,8 @@ export const translations = {
     navMapDesc: 'Auto-search hospitals within 5km',
     mobileMenuTitle: 'Switch Service',
     closeMenu: 'Close Menu',
+    logout: 'Sign out',
+    sessionExpired: 'Your session has expired. Please sign in again.',
 
     // Chat Panel
     headerDoctorName: 'AI Doctor Assistant',
@@ -99,6 +117,20 @@ export const translations = {
     retryBtn: 'Retry',
     errorDefault: 'Unable to get AI response right now.',
     errorIncomplete: 'AI response was incomplete.',
+    newChat: 'New chat',
+    newChatConfirm: 'Start a new chat? The current conversation will be cleared.',
+    quickStartTitle: 'Common questions — tap to ask',
+    quickPrompts: [
+      'I have a 38.5°C fever and a headache for two days',
+      'Sore throat and cough — how can I ease it?',
+      'What is the difference between Panadol and ibuprofen?',
+      'What are the warning signs of dengue?',
+    ],
+    sourcesTitle: '📚 Sources',
+    urgencyLabel: { low: 'Low risk', medium: 'Keep an eye on it', high: 'See a doctor soon', emergency: 'Emergency' },
+    composerHint: 'Enter to send · Shift + Enter for new line',
+    thinking: 'AI is analyzing...',
+    networkError: 'Cannot reach the server. Please check your connection and retry.',
 
     // Map Panel
     backToChat: 'Back',

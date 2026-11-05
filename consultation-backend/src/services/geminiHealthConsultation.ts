@@ -1,4 +1,5 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai'
+import { extractPartialSummary } from './partialSummary.js'
 import type { ChatAnswer, ChatHistoryMessage } from '../schemas/chat.js'
 import type { MedicalEvidence } from './medicalData/medicalDataTypes.js'
 
@@ -30,6 +31,8 @@ export interface HealthConsultationInput {
     category?: string
     reason?: string
   }
+  /** 提供时改用流式生成：每当 summary 有新内容就回调当前完整的 summary 文本 */
+  onSummaryDelta?: (summarySoFar: string) => void
 }
 
 const systemPrompt = `你是温暖、专业、极具临床机智度的 AI 健康咨询与就医导航助手。
@@ -232,9 +235,15 @@ export function createGeminiHealthConsultation(options: {
   const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY
   const primaryModel =
     options.model ?? process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite'
+  // 忙碌（429/503）时最多换一次模型，避免免费版排队时等待时间不断累积
+  const configuredAttempts = Number(process.env.GEMINI_MAX_ATTEMPTS ?? 2)
+  const maxAttempts =
+    Number.isFinite(configuredAttempts) && configuredAttempts >= 1
+      ? Math.floor(configuredAttempts)
+      : 2
   const candidateModels = options.model
     ? [options.model]
-    : Array.from(new Set([primaryModel, ...fallbackModels]))
+    : Array.from(new Set([primaryModel, ...fallbackModels])).slice(0, maxAttempts)
   const configuredTimeout = Number(
     options.timeoutMs ?? process.env.GEMINI_TIMEOUT_MS ?? 30000,
   )
@@ -303,7 +312,7 @@ The user's system language is strictly locked to English ('en').
     for (let i = 0; i < candidateModels.length; i += 1) {
       const candidateModel = candidateModels[i]
       try {
-        response = await client.models.generateContent({
+        const request = {
           model: candidateModel,
           contents: [
             ...(input.history ?? []).map((message) => ({
@@ -324,7 +333,28 @@ The user's system language is strictly locked to English ('en').
             },
             maxOutputTokens: 1500,
           },
-        })
+        }
+        if (input.onSummaryDelta) {
+          // 流式生成：边收边解析 summary，推送给前端
+          const stream = await client.models.generateContentStream(request)
+          let text = ''
+          let lastSummary = ''
+          let candidates
+          let promptFeedback
+          for await (const chunk of stream) {
+            candidates = chunk.candidates ?? candidates
+            promptFeedback ??= chunk.promptFeedback
+            text += chunk.text ?? ''
+            const summary = extractPartialSummary(text)
+            if (summary && summary !== lastSummary) {
+              lastSummary = summary
+              input.onSummaryDelta(summary)
+            }
+          }
+          response = { text, candidates, promptFeedback }
+        } else {
+          response = await client.models.generateContent(request)
+        }
         lastError = undefined
         break
       } catch (error) {

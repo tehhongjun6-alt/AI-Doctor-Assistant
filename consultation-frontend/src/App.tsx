@@ -1,122 +1,182 @@
-import { useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import './App.css'
+import AuthPage from './AuthPage'
 import ChatPanel from './ChatPanel'
-import MapPanel from './MapPanel'
+import {
+  AUTH_EXPIRED_EVENT,
+  clearSession,
+  loadSession,
+  type AuthSession,
+} from './auth'
 import { translations, type Language } from './i18n'
 
 type ActiveSection = 'chat' | 'map'
+type Translation = (typeof translations)[Language]
 
-const AUTH_TOKEN_KEY = 'ai_doc_session_token'
-const TOKEN_TTL_MS = 30 * 60 * 1000 // Token 有效期：30 分钟
-const ACCESS_PASSCODE = '1234'
+// 地图库体积较大（约 1MB），首次打开“附近医院”时才加载
+const MapPanel = lazy(() => import('./MapPanel'))
 
-interface StoredToken {
-  token: string
-  expiresAt: number
-}
+const LANG_KEY = 'ai_doc_lang'
+const CHAT_STORAGE_PREFIX = 'ai_doc_chat_'
 
-// 检查 localStorage 中的 Token 是否有效
-function checkValidToken(): boolean {
+function loadLanguage(): Language {
   try {
-    const raw = localStorage.getItem(AUTH_TOKEN_KEY)
-    if (!raw) return false
-    const parsed: StoredToken = JSON.parse(raw)
-    if (Date.now() < parsed.expiresAt) {
-      return true
-    }
-    localStorage.removeItem(AUTH_TOKEN_KEY)
-    return false
+    const saved = localStorage.getItem(LANG_KEY)
+    if (saved === 'zh' || saved === 'en') return saved
   } catch {
-    localStorage.removeItem(AUTH_TOKEN_KEY)
-    return false
+    /* ignore */
   }
+  return 'zh'
 }
 
-// 验证通过后颁发 30 分钟有效的 Token
-function issueToken(): void {
-  const tokenData: StoredToken = {
-    token: `tok_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-    expiresAt: Date.now() + TOKEN_TTL_MS,
-  }
-  localStorage.setItem(AUTH_TOKEN_KEY, JSON.stringify(tokenData))
+function FeatureNavCards({
+  t,
+  activeSection,
+  onSelect,
+}: {
+  t: Translation
+  activeSection: ActiveSection
+  onSelect: (section: ActiveSection) => void
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        className={`feature-nav-card ${activeSection === 'chat' ? 'active' : ''}`}
+        aria-current={activeSection === 'chat' ? 'page' : undefined}
+        onClick={() => onSelect('chat')}
+      >
+        <div className="nav-card-icon icon-bubble" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+            />
+          </svg>
+        </div>
+        <div className="nav-card-texts">
+          <span className="nav-card-title">{t.navChatTitle}</span>
+          <span className="nav-card-desc">{t.navChatDesc}</span>
+        </div>
+      </button>
+
+      <button
+        type="button"
+        className={`feature-nav-card ${activeSection === 'map' ? 'active' : ''}`}
+        aria-current={activeSection === 'map' ? 'page' : undefined}
+        onClick={() => onSelect('map')}
+      >
+        <div className="nav-card-icon icon-hospital" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+            />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </div>
+        <div className="nav-card-texts">
+          <span className="nav-card-title">{t.navMapTitle}</span>
+          <span className="nav-card-desc">{t.navMapDesc}</span>
+        </div>
+      </button>
+    </>
+  )
 }
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() =>
-    checkValidToken(),
+  const [session, setSession] = useState<AuthSession | null>(() =>
+    loadSession(),
   )
-  const [passwordInput, setPasswordInput] = useState('')
-  const [loginError, setLoginError] = useState(false)
+  const [authNotice, setAuthNotice] = useState<string>()
   const [activeSection, setActiveSection] = useState<ActiveSection>('chat')
-  const [lang, setLang] = useState<Language>('zh')
+  const [lang, setLang] = useState<Language>(loadLanguage)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [hasOpenedMap, setHasOpenedMap] = useState(false)
 
   const t = translations[lang]
 
-  function handleLogin(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (passwordInput.trim() === ACCESS_PASSCODE) {
-      issueToken()
-      setIsAuthenticated(true)
-      setLoginError(false)
-      setPasswordInput('')
-    } else {
-      setLoginError(true)
-      setPasswordInput('')
+  useEffect(() => {
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en'
+    try {
+      localStorage.setItem(LANG_KEY, lang)
+    } catch {
+      /* ignore */
     }
+  }, [lang])
+
+  // 后端返回 401 或令牌到期时，自动退回登录页
+  useEffect(() => {
+    function handleExpired() {
+      setSession(null)
+      setAuthNotice(t.sessionExpired)
+    }
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleExpired)
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpired)
+  }, [t.sessionExpired])
+
+  useEffect(() => {
+    if (!session) return
+    const remaining = session.expiresAt - Date.now()
+    const timer = window.setTimeout(() => {
+      clearSession()
+      setSession(null)
+      setAuthNotice(t.sessionExpired)
+    }, Math.max(0, Math.min(remaining, 2_147_000_000)))
+    return () => window.clearTimeout(timer)
+  }, [session, t.sessionExpired])
+
+  function handleLogout() {
+    if (session) {
+      try {
+        sessionStorage.removeItem(`${CHAT_STORAGE_PREFIX}${session.user.id}`)
+      } catch {
+        /* ignore */
+      }
+    }
+    clearSession()
+    setSession(null)
+    setAuthNotice(undefined)
+    setIsMobileMenuOpen(false)
+    setActiveSection('chat')
+    setHasOpenedMap(false)
   }
 
   function handleSelectSection(section: ActiveSection) {
+    if (section === 'map') setHasOpenedMap(true)
     setActiveSection(section)
     setIsMobileMenuOpen(false)
   }
 
-  // 1. 若没有有效 Token（首次进入或超过 30 分钟），直接展示网页端登录界面
-  if (!isAuthenticated) {
+  // 1. 未登录（首次进入或令牌过期）：显示登录 / 注册页面
+  if (!session) {
     return (
-      <div className="login-gate-viewport">
-        <div className={`login-gate-card ${loginError ? 'shake' : ''}`}>
-          <div className="login-avatar-circle" aria-hidden="true" />
-          <h1 className="login-gate-title">AI 医生助手 · 登录访问</h1>
-          <p className="login-gate-desc">内部受限测试环境，请输入密码解锁访问</p>
-
-          <form className="login-gate-form" onSubmit={handleLogin}>
-            <div className="login-input-group">
-              <input
-                type="password"
-                className={`login-gate-input ${loginError ? 'error' : ''}`}
-                placeholder="请输入访问密码"
-                value={passwordInput}
-                autoFocus
-                maxLength={16}
-                onChange={(e) => {
-                  setPasswordInput(e.target.value)
-                  if (loginError) setLoginError(false)
-                }}
-                onBlur={() => {
-                  window.scrollTo(0, 0)
-                }}
-              />
-            </div>
-            {loginError && (
-              <div className="login-gate-error-text" role="alert">
-                ⚠️ 密码错误，请重新输入
-              </div>
-            )}
-            <button type="submit" className="login-gate-btn">
-              验证并进入
-            </button>
-          </form>
-
-          <div className="login-gate-hint">
-            <span>⏱️ 验证成功后自动获取 Token，30 分钟内刷新免重新登录</span>
-          </div>
-        </div>
-      </div>
+      <AuthPage
+        lang={lang}
+        onChangeLang={setLang}
+        notice={authNotice}
+        onAuthenticated={(next) => {
+          setSession(next)
+          setAuthNotice(undefined)
+        }}
+      />
     )
   }
 
-  // 2. 具备有效 Token（30 分钟内刷新保持），直接展示完整系统
+  const accountBar = (
+    <div className="account-bar">
+      <span className="account-email" title={session.user.email}>
+        {session.user.email}
+      </span>
+      <button type="button" className="logout-btn" onClick={handleLogout}>
+        {t.logout}
+      </button>
+    </div>
+  )
+
+  // 2. 已登录：展示完整系统
   return (
     <div className="app-viewport">
       <div className="app-container">
@@ -162,67 +222,13 @@ function App() {
 
           {/* 3. 底部两个功能卡片：1. 聊天 2. 查看附近的医院 */}
           <nav className="feature-nav-list" aria-label={t.mobileMenuTitle}>
-            {/* 卡片 1: 聊天咨询 */}
-            <button
-              type="button"
-              className={`feature-nav-card ${activeSection === 'chat' ? 'active' : ''}`}
-              onClick={() => handleSelectSection('chat')}
-            >
-              <div className="nav-card-icon icon-bubble" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  width="22"
-                  height="22"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                  />
-                </svg>
-              </div>
-              <div className="nav-card-texts">
-                <span className="nav-card-title">{t.navChatTitle}</span>
-                <span className="nav-card-desc">{t.navChatDesc}</span>
-              </div>
-            </button>
-
-            {/* 卡片 2: 查看附近的医院 */}
-            <button
-              type="button"
-              className={`feature-nav-card ${activeSection === 'map' ? 'active' : ''}`}
-              onClick={() => handleSelectSection('map')}
-            >
-              <div className="nav-card-icon icon-hospital" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  width="22"
-                  height="22"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
-              </div>
-              <div className="nav-card-texts">
-                <span className="nav-card-title">{t.navMapTitle}</span>
-                <span className="nav-card-desc">{t.navMapDesc}</span>
-              </div>
-            </button>
+            <FeatureNavCards
+              t={t}
+              activeSection={activeSection}
+              onSelect={handleSelectSection}
+            />
           </nav>
+          {accountBar}
         </aside>
 
         {/* 右侧主工作区卡片：手机端默认第一页即全屏展示此区域 */}
@@ -232,6 +238,8 @@ function App() {
             style={{ display: activeSection === 'chat' ? 'flex' : 'none' }}
           >
             <ChatPanel
+              key={session.user.id}
+              storageKey={`${CHAT_STORAGE_PREFIX}${session.user.id}`}
               onOpenMap={() => handleSelectSection('map')}
               lang={lang}
               onChangeLang={setLang}
@@ -245,16 +253,27 @@ function App() {
             className="panel-content-wrap"
             style={{ display: activeSection === 'map' ? 'flex' : 'none' }}
           >
-            <MapPanel
-              isVisible={activeSection === 'map'}
-              onBackToChat={() => handleSelectSection('chat')}
-              lang={lang}
-              onChangeLang={setLang}
-              onOpenMobileMenu={() =>
-                setIsMobileMenuOpen((prev) => !prev)
-              }
-              isMobileMenuOpen={isMobileMenuOpen}
-            />
+            {hasOpenedMap && (
+              <Suspense
+                fallback={
+                  <div className="map-lazy-loading" role="status">
+                    <div className="loading-spinner" aria-hidden="true" />
+                    <span>{t.loadingMap}</span>
+                  </div>
+                }
+              >
+                <MapPanel
+                  isVisible={activeSection === 'map'}
+                  onBackToChat={() => handleSelectSection('chat')}
+                  lang={lang}
+                  onChangeLang={setLang}
+                  onOpenMobileMenu={() =>
+                    setIsMobileMenuOpen((prev) => !prev)
+                  }
+                  isMobileMenuOpen={isMobileMenuOpen}
+                />
+              </Suspense>
+            )}
           </div>
         </main>
 
@@ -291,65 +310,13 @@ function App() {
             </header>
 
             <div className="sheet-nav-options">
-              <button
-                type="button"
-                className={`feature-nav-card ${activeSection === 'chat' ? 'active' : ''}`}
-                onClick={() => handleSelectSection('chat')}
-              >
-                <div className="nav-card-icon icon-bubble" aria-hidden="true">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    width="22"
-                    height="22"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                  </svg>
-                </div>
-                <div className="nav-card-texts">
-                  <span className="nav-card-title">{t.navChatTitle}</span>
-                  <span className="nav-card-desc">{t.navChatDesc}</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                className={`feature-nav-card ${activeSection === 'map' ? 'active' : ''}`}
-                onClick={() => handleSelectSection('map')}
-              >
-                <div className="nav-card-icon icon-hospital" aria-hidden="true">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    width="22"
-                    height="22"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                  </svg>
-                </div>
-                <div className="nav-card-texts">
-                  <span className="nav-card-title">{t.navMapTitle}</span>
-                  <span className="nav-card-desc">{t.navMapDesc}</span>
-                </div>
-              </button>
+              <FeatureNavCards
+                t={t}
+                activeSection={activeSection}
+                onSelect={handleSelectSection}
+              />
             </div>
+            {accountBar}
           </section>
         </div>
       </div>
