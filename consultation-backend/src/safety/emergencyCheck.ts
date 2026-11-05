@@ -55,6 +55,7 @@ const rules: EmergencyRule[] = [
     patterns: [
       /无法呼吸|不能呼吸|喘不过气|呼吸(?:非常|十分|严重)困难|说不出完整句子/,
       /cannot breathe|can(?:not|'t) catch (?:my|their) breath|severe difficulty breathing|gasping for air/i,
+      /tak boleh bernafas|sesak nafas teruk/i,
     ],
   },
   {
@@ -63,6 +64,7 @@ const rules: EmergencyRule[] = [
     patterns: [
       /失去意识|没有意识|昏迷|叫不醒|无法唤醒|神志不清|突然意识混乱|异常嗜睡|很难叫醒/,
       /unconscious|unresponsive|cannot be woken|passed out and (?:is )?not waking|sudden confusion|extremely drowsy and hard to wake/i,
+      /pengsan|tak sedar diri/i,
     ],
   },
   {
@@ -73,6 +75,7 @@ const rules: EmergencyRule[] = [
       /胸(?:口|部)?(?:闷|压迫感|紧缩感|不舒服).{0,12}(?:气短|呼吸困难|冷汗|恶心|手臂|下巴|背部)|(?:手臂|下巴|背部).{0,12}(?:痛|疼).{0,12}胸(?:口|部)?(?:闷|痛|疼|不舒服)/,
       /severe chest pain|crushing chest pain|persistent chest pain/i,
       /chest (?:pressure|tightness|discomfort).{0,30}(?:shortness of breath|cold sweat|nausea|arm|jaw|back)/i,
+      /sakit dada/i,
     ],
   },
   {
@@ -81,6 +84,7 @@ const rules: EmergencyRule[] = [
     patterns: [
       /大量出血|无法止血|出血不止|血.{0,6}(?:止不住|一直流|不停流)/,
       /severe bleeding|uncontrolled bleeding|bleeding (?:will not|won't) stop|major blood loss/i,
+      /darah tak berhenti/i,
     ],
   },
   {
@@ -100,6 +104,7 @@ const rules: EmergencyRule[] = [
       /突然.{0,8}(?:单侧麻木|一边麻木|看不清|视力异常|失去平衡|站不稳|剧烈头痛)/,
       /(?:脸歪|嘴歪|一侧无力|半边无力).{0,8}(?:说话含糊|无法说话)/,
       /sudden.{0,20}(?:face droop|one-sided (?:weakness|numbness)|slurred speech|unable to speak|vision (?:loss|change)|loss of balance|severe headache)/i,
+      /mulut senget|cakap pelat tiba-tiba/i,
     ],
   },
   {
@@ -108,6 +113,7 @@ const rules: EmergencyRule[] = [
     patterns: [
       /抽搐.{0,8}(?:超过五分钟|超过5分钟|一直不停|没有停止)|癫痫.{0,8}(?:一直发作|没有停止|失去意识)|第一次.{0,6}(?:抽搐|癫痫发作)/,
       /(?:first|first-ever).{0,12}seizure|seizure.{0,20}(?:over five minutes|over 5 minutes|will not stop|not regaining consciousness)/i,
+      /\bsawan\b/i,
     ],
   },
   {
@@ -116,6 +122,7 @@ const rules: EmergencyRule[] = [
     patterns: [
       /(?:现在|马上|立即)?.{0,4}(?:想|要|准备)(?:自杀|结束生命|伤害自己)/,
       /(?:going to|plan to|about to|want to).{0,12}(?:kill myself|end my life|hurt myself)/i,
+      /bunuh diri|nak mati/i,
     ],
   },
   {
@@ -140,6 +147,7 @@ const rules: EmergencyRule[] = [
     patterns: [
       /误食(?:毒物|化学品|清洁剂|农药)|吞下(?:毒物|化学品|清洁剂|农药)|服药过量|药物过量|煤气中毒|一氧化碳中毒|吸入有毒气体/,
       /swallowed (?:poison|a chemical|cleaning product|pesticide)|medication overdose|drug overdose|took too many pills|carbon monoxide poisoning|inhaled toxic (?:gas|fumes)/i,
+      /telan banyak ubat|minum racun/i,
     ],
   },
   {

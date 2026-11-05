@@ -85,7 +85,7 @@
 - 新增测试：正常的英文回答（如 "Please see a doctor if symptoms persist"）**不会**被误拦
 - `npm test` 全部通过
 
-### [ ] 第 3 步｜A13：急症检测加马来语（只改后端）
+### [x] 第 3 步｜A13：急症检测加马来语（只改后端）
 
 **做法**：在 `safety/emergencyCheck.ts` 现有的规则里，**新增**马来语关键词，类别沿用现有的。至少覆盖：
 - 胸痛：`sakit dada`
@@ -102,6 +102,8 @@
 - 原有的急症测试全部通过（不准改原有规则）
 - `npm test` 全部通过
 - 【你做】请会马来语的人看一遍关键词（可以在第 7 步之前完成）
+
+**验收重点**：`git diff` 里 `emergencyCheck.ts` 只有新增的行，原有的规则一行都没删改；马来语关键词不会误拦普通句子（例如只说「sakit kepala」头痛，不应判定为急症）
 
 ### [ ] 第 4a 步｜多对话：建表 SQL
 
@@ -147,6 +149,8 @@ alter table public.conversation_messages enable row level security;
 - SQL 文件已建立
 - 【你做】在 Supabase 的 SQL Editor 执行成功；Table Editor 里能看到两张表，并标示 RLS 已开启
 
+**验收重点**：SQL 要和上面的内容一致（两张表都开启 RLS、都有 `on delete cascade`）；`user_id` 的类型要和 `public.users.id` 一致；这一步只新增 SQL 文件，不能改任何代码
+
 ### [ ] 第 4b 步｜多对话：存取数据的代码（只改后端）
 
 **做法**
@@ -173,6 +177,8 @@ alter table public.conversation_messages enable row level security;
 - `nextConversationState` 的结果和原来 `saveTurn` 一致
 - `npm test` 全部通过，`npm run build` 没有类型错误
 - PG 实现不在单元测试里连真实数据库，留到第 7 步线上验证
+
+**验收重点**：这一步还**不能**改 `app.ts` 的接口行为（那是 4c 的事），原有测试必须全部不动就通过；PG 实现的每条 SQL 都要带 `user_id` 条件，防止读到别人的对话；`appendTurn` 真的用了 transaction
 
 ### [ ] 第 4c 步｜多对话：接口（只改后端）
 
@@ -208,6 +214,8 @@ alter table public.conversation_messages enable row level security;
 - 删除后再 `GET` 回 404
 - `npm test` 全部通过，`npm run build` 没有类型错误
 
+**验收重点**：`app.test.ts` 只改了允许的那 2 个测试，而且原本的意图还在；409 和 404 的检查确实在调用 Gemini **之前**；第 1 步的 `previousSearchQueries` 还有传进路由；`/api/chat/stream` 也套用了同样的检查
+
 ### [ ] 第 5 步｜多对话：前端
 
 **做法**
@@ -241,6 +249,8 @@ alter table public.conversation_messages enable row level security;
 - `npm test` 全部通过，`npm run build` 没有类型错误
 - 本地打开页面：刷新后对话还在；能看到保存说明
 
+**验收重点**：`App.test.tsx` 只改了 sessionStorage 相关的部分；所有新文字都有中文和英文；【你做】手机版和电脑版各打开一次，看对话列表的位置和「已满」显示
+
 ### [ ] 第 6 步｜A12：地图按病情推荐（两边都改）
 
 **做法**
@@ -269,6 +279,8 @@ alter table public.conversation_messages enable row level security;
 - 前端新增测试：`mapCareLevel: 'clinic'` 的回答显示「查看附近诊所和药房」
 - 两边 `npm test` 全部通过
 
+**验收重点**：不传 `careLevel` 时仍然只搜医院（旧行为不变）；打招呼或科普回答**不会**出现地图按钮；【你做】打开页面，确认轻症显示诊所和药房、急症显示医院
+
 ### [ ] 第 7 步｜部署和线上验证
 
 - 先确认第 4a 步的 SQL 已在 Supabase 执行
@@ -279,10 +291,12 @@ alter table public.conversation_messages enable row level security;
   - 轻症回答能打开「附近诊所和药房」，急症能打开「附近医院」
   - Supabase Table Editor 里能看到新数据
 
+**验收重点**：这一步由你亲自验收；用两个不同账号试一次，确认 A 看不到 B 的对话
+
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 2 步已完成（outputSafetyCheck 已补充越权确诊、保证治愈、劝阻就医英文拦截规则，29 个后端测试全部通过）
-- **下一步**：第 3 步（A13：急症检测加马来语）
+- **当前进度**：第 3 步已完成（emergencyCheck 已补充 8 类马来语急症关键词，39 个后端测试全部通过）
+- **下一步**：第 4a 步（多对话：建表 SQL）
 
 ## 6. 分工
 
@@ -320,7 +334,30 @@ alter table public.conversation_messages enable row level security;
 
 > 补充：第 4c 步和第 5 步写明「允许修改」的测试，是因为行为被有意改变，不算违反「禁止修改测试」。除此之外的测试一律不准改。
 
-## 10. 新对话开场白
+## 10. 新对话开场白（开发用）
 
 > 先读 PLAN.md 和现有代码，用 3 句话复述项目和当前进度。
 > 我确认后，只做第 N 步，按完成标准验证，并更新 PLAN.md 进度。
+> 做完后停下来等验收，不要自己提交。
+
+## 11. 【验收流程】
+
+每一步做完都要验收，**不能由做的那个对话自己验收**。
+
+- **流程**：开发对话做第 N 步 → 开一个**全新的**验收对话检查 → 用户看结论决定 → 通过就提交 → 下一步
+- **不通过**：把验收员列出的问题贴回开发对话修，修完再开一个新的验收对话检查（修的次数算在执行限制的「最多 2 轮」里）
+- **验收对话必须是全新的对话**，不能继承开发对话的记忆；能换模型就换成和开发不同的模型
+- **每一步验收通过后马上提交**，下一步的改动才不会和上一步混在一起
+- 有界面的步骤，用户要亲自打开页面看一眼；涉及线上的步骤，用户要亲自试一次
+
+### 验收开场白（把 N 换成步骤号）
+
+> 你是验收员，不是开发者。只检查，**不准修改任何文件**。
+> 1. 读 PLAN.md 第 N 步的「做法」「允许修改的现有测试」「完成标准」「验收重点」，以及第 3 节（护栏）和第 9 节（执行限制）。
+> 2. 运行 `git status` 和 `git diff`，列出改了哪些文件，指出计划以外的改动。
+> 3. 检查测试文件的改动：有没有修改、删除或跳过不在「允许修改」清单里的测试。
+> 4. 自己运行测试命令，贴出结果摘要；不要只看之前的对话说通过了。
+> 5. 逐条对照完成标准，每条标 ✅ 或 ❌，并附上证据（文件、行号或测试名称）。
+> 6. 检查 PLAN.md 这一步是否打了 [x]，并记录了实际的做法和名称。
+>
+> 最后给出结论：**通过** 或 **不通过**。不通过时，列出要修的具体项目。
