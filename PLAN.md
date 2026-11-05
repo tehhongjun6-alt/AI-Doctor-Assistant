@@ -222,7 +222,13 @@ alter table public.conversation_messages enable row level security;
 
 **验收重点**：`app.test.ts` 只改了允许的那 2 个测试，而且原本的意图还在；409 和 404 的检查确实在调用 Gemini **之前**；第 1 步的 `previousSearchQueries` 还有传进路由；`/api/chat/stream` 也套用了同样的检查
 
-### [ ] 第 5 步｜多对话：前端
+### [x] 第 5 步｜多对话：前端
+
+**已实现**（2026-11-05，前端 13 个测试、后端 51 个测试全部通过）：
+- 新建 `src/ConversationList.tsx` 组件并在电脑端 Aside 与手机端底部弹出抽屉分别呈现，包含标题、最后更新时间、数量计数、30 天自动清理提示。
+- 「新对话」按钮支持根据 3 个上限自动禁用并显示「已满 3/3」；支持 `window.confirm` 二次确认后调用 `DELETE /api/conversations/:id` 并同步更新列表与激活态。
+- 改造 `App.tsx` 与 `ChatPanel.tsx`：彻底移除 `sessionStorage` 与客户端 `history` 传送；根据 `conversationId` 调用 `GET /api/conversations/:id` 还原历史对话与结构化回答；错误码（409 上限、409 满 100 条、404 过期/不存在）友好提示。
+- `src/i18n.ts` 补充完整多对话中英双语文字。
 
 **做法**
 1. 新建 `src/ConversationList.tsx`：对话列表（标题 + 最后更新时间）、「新对话」按钮、每个对话的删除按钮、保存说明文字
@@ -301,8 +307,8 @@ alter table public.conversation_messages enable row level security;
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 4 步已完成（4a 建表 SQL 就绪、4b 存储库双实现完成、4c 多对话 REST 接口与聊天拦截接入，51 个后端测试全过）
-- **下一步**：第 5 步（多对话：前端）
+- **当前进度**：第 5 步已完成（多对话前端组件 ConversationList、ChatPanel 切换/加载历史、i18n 中英双语、13 个前端测试与 51 个后端测试全过）
+- **下一步**：第 6 步（A12：地图按病情推荐）
 
 ## 6. 分工
 

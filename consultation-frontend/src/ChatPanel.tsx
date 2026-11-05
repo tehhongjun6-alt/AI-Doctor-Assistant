@@ -55,18 +55,13 @@ interface ChatApiResponse {
 }
 
 interface ChatPanelProps {
+  conversationId?: string
+  onConversationChanged?: (newId?: string) => void
   onOpenMap: () => void
   lang: Language
   onChangeLang: (lang: Language) => void
   onOpenMobileMenu: () => void
   isMobileMenuOpen?: boolean
-  /** 用于在本次浏览器会话中保存对话（按用户区分） */
-  storageKey?: string
-}
-
-interface StoredChat {
-  messages: ChatMessage[]
-  conversationId?: string
 }
 
 function createWelcomeMessage(): ChatMessage {
@@ -78,18 +73,10 @@ function createWelcomeMessage(): ChatMessage {
   }
 }
 
-function loadStoredChat(storageKey?: string): StoredChat | null {
-  if (!storageKey) return null
-  try {
-    const raw = sessionStorage.getItem(storageKey)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as StoredChat
-    return Array.isArray(parsed.messages) && parsed.messages.length > 0
-      ? parsed
-      : null
-  } catch {
-    return null
-  }
+function formatTimeFromDate(d: Date): string {
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
 }
 
 function safeHostname(url: string) {
@@ -109,16 +96,6 @@ function getCurrentTime() {
   const hours = String(now.getHours()).padStart(2, '0')
   const minutes = String(now.getMinutes()).padStart(2, '0')
   return `${hours}:${minutes}`
-}
-
-function answerAsHistory(answer: HealthAnswer) {
-  return [
-    answer.summary,
-    ...answer.followUpQuestions,
-    ...answer.possibleCauses,
-    ...answer.advice,
-    ...answer.seekCareWhen,
-  ].join('\n')
 }
 
 function renderFormattedText(text: string) {
@@ -209,21 +186,21 @@ async function requestChat(
 }
 
 function ChatPanel({
+  conversationId: propConversationId,
+  onConversationChanged,
   onOpenMap,
   lang,
   onChangeLang,
   onOpenMobileMenu,
   isMobileMenuOpen,
-  storageKey,
 }: ChatPanelProps) {
   const t = translations[lang]
-  const [initialChat] = useState(() => loadStoredChat(storageKey))
-  const [messages, setMessages] = useState<ChatMessage[]>(
-    () => initialChat?.messages ?? [createWelcomeMessage()],
-  )
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    createWelcomeMessage(),
+  ])
   const [input, setInput] = useState('')
   const [conversationId, setConversationId] = useState<string | undefined>(
-    initialChat?.conversationId,
+    propConversationId,
   )
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string>()
@@ -234,25 +211,64 @@ function ChatPanel({
   const hasConversation = messages.some((message) => message.role === 'user')
 
   useEffect(() => {
+    setConversationId(propConversationId)
+  }, [propConversationId])
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' })
   }, [messages, isSending, streamingText])
 
-  // 刷新页面时保留当前对话（仅保存在本标签页的 sessionStorage）
+  // 有指定 conversationId 时，拉取历史消息还原显示
   useEffect(() => {
-    if (!storageKey) return
-    try {
-      if (hasConversation) {
-        sessionStorage.setItem(
-          storageKey,
-          JSON.stringify({ messages: messages.slice(-40), conversationId }),
-        )
-      } else {
-        sessionStorage.removeItem(storageKey)
-      }
-    } catch {
-      /* 隐私模式下无法保存 */
+    let isCancelled = false
+    if (!propConversationId) {
+      setMessages([createWelcomeMessage()])
+      return
     }
-  }, [messages, conversationId, storageKey, hasConversation])
+
+    async function fetchConversation() {
+      try {
+        const res = await authFetch(`/api/conversations/${propConversationId}`)
+        if (isCancelled) return
+        if (res.status === 404) {
+          setError(t.conversationNotFoundNotice)
+          onConversationChanged?.(undefined)
+          setMessages([createWelcomeMessage()])
+          return
+        }
+        if (!res.ok) {
+          throw new Error(t.errorDefault)
+        }
+        const data = await res.json()
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          const mapped: ChatMessage[] = data.messages.map((m: any) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            answer: m.answer ?? undefined,
+            emergency: Boolean(m.isEmergency),
+            sources: m.sources ?? undefined,
+            timestamp: m.createdAt
+              ? formatTimeFromDate(new Date(m.createdAt))
+              : getCurrentTime(),
+          }))
+          setMessages(mapped)
+        } else {
+          setMessages([createWelcomeMessage()])
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          console.error('Failed to load conversation messages', err)
+          setMessages([createWelcomeMessage()])
+        }
+      }
+    }
+
+    fetchConversation()
+    return () => {
+      isCancelled = true
+    }
+  }, [propConversationId, t.conversationNotFoundNotice, t.errorDefault])
 
   // 输入框随内容自动增高
   useEffect(() => {
@@ -265,6 +281,7 @@ function ChatPanel({
   function handleNewChat() {
     if (isSending) return
     if (hasConversation && !window.confirm(t.newChatConfirm)) return
+    onConversationChanged?.(undefined)
     setMessages([createWelcomeMessage()])
     setConversationId(undefined)
     setError(undefined)
@@ -274,16 +291,6 @@ function ChatPanel({
   }
 
   async function sendMessage(message: string, appendUserMessage: boolean) {
-    const history = messages.slice(-20).map((item) => ({
-      role: item.role,
-      content: (item.answer
-        ? answerAsHistory(item.answer)
-        : item.id === 'welcome'
-          ? t.welcomeMessage
-          : item.content
-      ).slice(0, 4000),
-    }))
-
     if (appendUserMessage) {
       setMessages((current) => [
         ...current,
@@ -301,11 +308,11 @@ function ChatPanel({
     setRetryMessage(undefined)
 
     try {
+      // 发送消息时不再传递客户端 history，改由后端服务器接管
       const requestBody = JSON.stringify({
         conversationId,
         message,
         language: lang,
-        history,
       })
       const { ok, result } = await requestChat(requestBody, (summary) => {
         // 流式：先显示正在生成的摘要文字
@@ -314,15 +321,28 @@ function ChatPanel({
       setStreamingText(undefined)
 
       if (!ok || !result.success || !result.data) {
+        const errCode = (result as { error?: { code?: string } })?.error?.code
+        if (errCode === 'CONVERSATION_LIMIT_REACHED') {
+          throw new Error(t.conversationLimitReachedNotice)
+        }
+        if (errCode === 'CONVERSATION_FULL') {
+          throw new Error(t.conversationFullNotice)
+        }
+        if (errCode === 'CONVERSATION_NOT_FOUND') {
+          onConversationChanged?.(undefined)
+          throw new Error(t.conversationNotFoundNotice)
+        }
         throw new Error(result.error?.message ?? t.errorDefault)
       }
 
       const responseTime = getCurrentTime()
+      const returnedConvId = result.data.conversationId
+      if (returnedConvId) {
+        setConversationId(returnedConvId)
+        onConversationChanged?.()
+      }
 
       if (result.data.type === 'emergency') {
-        if (result.data.conversationId) {
-          setConversationId(result.data.conversationId)
-        }
         setMessages((current) => [
           ...current,
           {
@@ -346,7 +366,6 @@ function ChatPanel({
       }
 
       const answerData = result.data.answer
-      setConversationId(result.data.conversationId)
       setMessages((current) => [
         ...current,
         {

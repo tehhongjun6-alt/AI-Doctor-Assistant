@@ -2,8 +2,10 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import './App.css'
 import AuthPage from './AuthPage'
 import ChatPanel from './ChatPanel'
+import ConversationList, { type ConversationItem } from './ConversationList'
 import {
   AUTH_EXPIRED_EVENT,
+  authFetch,
   clearSession,
   loadSession,
   type AuthSession,
@@ -17,7 +19,6 @@ type Translation = (typeof translations)[Language]
 const MapPanel = lazy(() => import('./MapPanel'))
 
 const LANG_KEY = 'ai_doc_lang'
-const CHAT_STORAGE_PREFIX = 'ai_doc_chat_'
 
 function loadLanguage(): Language {
   try {
@@ -96,6 +97,13 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [hasOpenedMap, setHasOpenedMap] = useState(false)
 
+  // 多对话状态（第 5 步）
+  const [conversations, setConversations] = useState<ConversationItem[]>([])
+  const [conversationsLimit, setConversationsLimit] = useState(3)
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | undefined
+  >(undefined)
+
   const t = translations[lang]
 
   useEffect(() => {
@@ -128,26 +136,80 @@ function App() {
     return () => window.clearTimeout(timer)
   }, [session, t.sessionExpired])
 
-  function handleLogout() {
-    if (session) {
-      try {
-        sessionStorage.removeItem(`${CHAT_STORAGE_PREFIX}${session.user.id}`)
-      } catch {
-        /* ignore */
+  // 加载当前用户的多对话列表
+  async function loadConversations() {
+    if (!session) return
+    try {
+      const res = await authFetch('/api/conversations')
+      if (!res.ok) return
+      const data = await res.json()
+      if (Array.isArray(data.conversations)) {
+        setConversations(data.conversations)
+        if (typeof data.limit === 'number') {
+          setConversationsLimit(data.limit)
+        }
       }
+    } catch (err) {
+      console.error('Failed to load conversations', err)
     }
+  }
+
+  useEffect(() => {
+    if (session) {
+      void loadConversations()
+    } else {
+      setConversations([])
+      setActiveConversationId(undefined)
+    }
+  }, [session])
+
+  function handleLogout() {
     clearSession()
     setSession(null)
     setAuthNotice(undefined)
     setIsMobileMenuOpen(false)
     setActiveSection('chat')
     setHasOpenedMap(false)
+    setConversations([])
+    setActiveConversationId(undefined)
   }
 
   function handleSelectSection(section: ActiveSection) {
     if (section === 'map') setHasOpenedMap(true)
     setActiveSection(section)
     setIsMobileMenuOpen(false)
+  }
+
+  function handleSelectConversation(id?: string) {
+    setActiveConversationId(id)
+    setActiveSection('chat')
+  }
+
+  function handleNewConversation() {
+    if (conversations.length >= conversationsLimit) return
+    setActiveConversationId(undefined)
+    setActiveSection('chat')
+  }
+
+  async function handleDeleteConversation(id: string) {
+    if (!window.confirm(t.deleteConversationConfirm)) return
+    try {
+      const res = await authFetch(`/api/conversations/${id}`, {
+        method: 'DELETE',
+      })
+      if (res.ok || res.status === 204 || res.status === 404) {
+        setConversations((prev) => prev.filter((c) => c.id !== id))
+        if (activeConversationId === id) {
+          setActiveConversationId(undefined)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete conversation', err)
+    }
+  }
+
+  function handleConversationChanged() {
+    void loadConversations()
   }
 
   // 1. 未登录（首次进入或令牌过期）：显示登录 / 注册页面
@@ -220,6 +282,17 @@ function App() {
             </section>
           </div>
 
+          {/* 2.5 历史对话列表（桌面端） */}
+          <ConversationList
+            conversations={conversations}
+            activeId={activeConversationId}
+            limit={conversationsLimit}
+            onSelect={handleSelectConversation}
+            onDelete={handleDeleteConversation}
+            onNew={handleNewConversation}
+            t={t}
+          />
+
           {/* 3. 底部两个功能卡片：1. 聊天 2. 查看附近的医院 */}
           <nav className="feature-nav-list" aria-label={t.mobileMenuTitle}>
             <FeatureNavCards
@@ -238,8 +311,9 @@ function App() {
             style={{ display: activeSection === 'chat' ? 'flex' : 'none' }}
           >
             <ChatPanel
-              key={session.user.id}
-              storageKey={`${CHAT_STORAGE_PREFIX}${session.user.id}`}
+              key={activeConversationId ?? 'new'}
+              conversationId={activeConversationId}
+              onConversationChanged={handleConversationChanged}
               onOpenMap={() => handleSelectSection('map')}
               lang={lang}
               onChangeLang={setLang}
@@ -308,6 +382,23 @@ function App() {
                 ✕
               </button>
             </header>
+
+            {/* 手机端对话列表 */}
+            <ConversationList
+              conversations={conversations}
+              activeId={activeConversationId}
+              limit={conversationsLimit}
+              onSelect={(id) => {
+                handleSelectConversation(id)
+                setIsMobileMenuOpen(false)
+              }}
+              onDelete={handleDeleteConversation}
+              onNew={() => {
+                handleNewConversation()
+                setIsMobileMenuOpen(false)
+              }}
+              t={t}
+            />
 
             <div className="sheet-nav-options">
               <FeatureNavCards

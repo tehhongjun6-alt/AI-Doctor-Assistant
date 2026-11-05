@@ -286,6 +286,174 @@ body {
 }
 
 /* ==========================================================================
+   2.5 多对话列表 (Conversation List - Step 5)
+   ========================================================================== */
+
+.conversation-list-container {
+  margin: 12px 0;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #edf2f7;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conversation-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.conv-header-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.conv-title-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.conv-count-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.new-conv-btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: none;
+  background: #5383f8;
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.new-conv-btn:hover:not(:disabled) {
+  background: #3b6ef5;
+  transform: translateY(-1px);
+}
+
+.new-conv-btn:disabled,
+.new-conv-btn.disabled {
+  background: #e2e8f0;
+  color: #94a3b8;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.conversation-list-body {
+  width: 100%;
+}
+
+.conversation-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.conversation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.conversation-item:hover {
+  border-color: #93c5fd;
+  background: #f0f7ff;
+  transform: translateY(-1px);
+}
+
+.conversation-item.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.15);
+}
+
+.conv-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conv-item-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conv-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.conv-delete-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.conv-delete-btn:hover {
+  color: #ef4444;
+  background: #fee2e2;
+}
+
+.empty-conv-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+  padding: 10px 0;
+}
+
+.conversation-ttl-notice {
+  font-size: 10.5px;
+  color: #94a3b8;
+  line-height: 1.4;
+  padding-top: 6px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+/* ==========================================================================
    3. 右侧主工作区卡片 (Main Chat Card)
    ========================================================================== */
 
