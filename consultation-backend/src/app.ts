@@ -255,6 +255,7 @@ export function createApp(dependencies: AppDependencies = {}) {
         answer: emergencyAnswer,
         clientHistory: validChat.history,
         category: medicalDataRoute?.category ?? 'symptom',
+        searchQueries: medicalDataRoute?.searchQueries,
         activeEmergency: { category, reason },
       })
 
@@ -292,6 +293,7 @@ export function createApp(dependencies: AppDependencies = {}) {
           activeCategory: session?.activeCategory,
           activeEmergency: session?.activeEmergency,
           topicMessages: session?.topicMessages,
+          previousSearchQueries: session?.lastSearchQueries,
         },
       )
 
@@ -401,6 +403,7 @@ export function createApp(dependencies: AppDependencies = {}) {
           clientHistory: validation.value.history,
           category: medicalDataRoute.category,
           evidence: medicalData?.evidence,
+          searchQueries: medicalDataRoute.searchQueries,
           activeEmergency: isLayer3Emergency
             ? {
                 category: 'unconsciousness',

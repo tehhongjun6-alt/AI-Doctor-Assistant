@@ -76,6 +76,12 @@ const PRESENT_DISCOMFORT_PATTERN =
 const RISK_PATTERN =
   /(吞|一整盒|一整瓶|过量|很多颗|几十颗|中毒|喝了.*(清洁剂|农药|漂白)|喘不|呼吸困难|胸口|胸痛|晕倒|昏迷|叫不醒|抽搐|翻白眼|大量出血|止不住|呕血|吐血|黑便|自杀|自残|不想活|轻生|半边|口齿不清|嘴角歪|脖子僵|喷射|怀孕|孕妇|阴道出血|婴儿|新生儿|overdose|poison|can't breathe|chest pain|faint|seizure|suicid|bleeding|pregnan|infant)/i
 
+export interface HeuristicRouteContext {
+  activeCategory?: MedicalDataCategory
+  previousSearchQueries?: string[]
+  topicMessages?: string[]
+}
+
 export type RouteConfidence = 'high' | 'low'
 
 export interface HeuristicRouteResult extends MedicalDataRouteResult {
@@ -89,7 +95,7 @@ function collectTerms(text: string, table: Array<[RegExp, string]>) {
 
 export function heuristicRoute(
   message: string,
-  context: { activeCategory?: MedicalDataCategory } = {},
+  context: HeuristicRouteContext = {},
 ): HeuristicRouteResult {
   const text = message.trim()
 
@@ -116,12 +122,31 @@ export function heuristicRoute(
   if (queries.length === 0) {
     // 没识别出医学词条：如果正处于问诊话题中，视为对追问的补充回答
     if (context.activeCategory && context.activeCategory !== 'greeting' && context.activeCategory !== 'unknown') {
+      let fallbackQueries =
+        context.previousSearchQueries && context.previousSearchQueries.length > 0
+          ? context.previousSearchQueries
+          : []
+
+      if (fallbackQueries.length === 0 && context.topicMessages && context.topicMessages.length > 0) {
+        for (let i = context.topicMessages.length - 1; i >= 0; i -= 1) {
+          const prevMsg = context.topicMessages[i]
+          const prevSymptoms = collectTerms(prevMsg, SYMPTOM_TERMS)
+          const prevDiseases = collectTerms(prevMsg, DISEASE_TERMS)
+          const prevMeds = collectTerms(prevMsg, MEDICATION_TERMS)
+          const extracted = Array.from(new Set([...prevSymptoms, ...prevDiseases, ...prevMeds]))
+          if (extracted.length > 0) {
+            fallbackQueries = extracted.slice(0, 4)
+            break
+          }
+        }
+      }
+
       return {
         route: 'medical_api',
         category: context.activeCategory,
         reason: '规则兜底：延续当前问诊话题。',
-        searchQuery: text,
-        searchQueries: [text],
+        searchQuery: fallbackQueries.length > 0 ? fallbackQueries.join(', ') : text,
+        searchQueries: fallbackQueries.length > 0 ? fallbackQueries : [text],
         confidence: 'low',
       }
     }

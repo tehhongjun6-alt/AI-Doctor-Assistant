@@ -26,6 +26,29 @@ describe('heuristic fallback router', () => {
     const result = heuristicRoute('38.5 度左右', { activeCategory: 'symptom' })
     expect(result.route).toBe('medical_api')
   })
+
+  it('reuses previous English search queries during follow-up without new medical terms', () => {
+    const result = heuristicRoute('三天了，38 度', {
+      activeCategory: 'symptom',
+      previousSearchQueries: ['fever'],
+    })
+    expect(result.route).toBe('medical_api')
+    expect(result.category).toBe('symptom')
+    expect(result.searchQueries).toEqual(['fever'])
+    expect(result.searchQuery).toBe('fever')
+    expect(result.searchQueries).not.toContain('三天了，38 度')
+  })
+
+  it('infers previous English search queries from topic messages if previousSearchQueries is omitted', () => {
+    const result = heuristicRoute('三天了，38 度', {
+      activeCategory: 'symptom',
+      topicMessages: ['我发烧头痛两天了'],
+    })
+    expect(result.route).toBe('medical_api')
+    expect(result.category).toBe('symptom')
+    expect(result.searchQueries).toEqual(expect.arrayContaining(['fever', 'headache']))
+    expect(result.searchQueries).not.toContain('三天了，38 度')
+  })
 })
 
 describe('rule-first confidence', () => {
@@ -51,5 +74,17 @@ describe('router fast path', () => {
     expect(result.route).toBe('medical_api')
     expect(result.reason).toContain('规则判断')
     expect(result).not.toHaveProperty('confidence')
+  })
+
+  it('falls back to previous English queries in createMedicalDataRouter when no new terms are present', async () => {
+    const { createMedicalDataRouter } = await import('../src/routing/medicalDataRouter.js')
+    const route = createMedicalDataRouter({ apiKey: 'fake-key', timeoutMs: 1 })
+    const result = await route('三天了，38 度', {
+      activeCategory: 'symptom',
+      previousSearchQueries: ['fever'],
+    })
+    expect(result.route).toBe('medical_api')
+    expect(result.searchQueries).toEqual(['fever'])
+    expect(result.searchQueries).not.toContain('三天了，38 度')
   })
 })

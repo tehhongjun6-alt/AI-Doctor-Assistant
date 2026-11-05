@@ -17,6 +17,7 @@ export interface MedicalDataRouteContext {
   activeCategory?: ActiveMedicalCategory
   activeEmergency?: { category: EmergencyCategory; reason: string }
   topicMessages?: string[]
+  previousSearchQueries?: string[]
 }
 
 const fallbackModels = [
@@ -263,8 +264,12 @@ export function createMedicalDataRouter(options: {
             .map((q) => q.trim())
             .filter((q) => q.length >= 2)
             .slice(0, 4)
-          const searchQueries =
-            validQueries.length > 0 ? validQueries : [normalizedMessage]
+          const fallbackQueries =
+            validQueries.length > 0
+              ? validQueries
+              : context.previousSearchQueries && context.previousSearchQueries.length > 0
+                ? context.previousSearchQueries
+                : [normalizedMessage]
           return {
             route: parsed.route,
             category: parsed.category ?? context.activeCategory ?? 'general_health',
@@ -273,8 +278,8 @@ export function createMedicalDataRouter(options: {
               (parsed.route === 'medical_qa'
                 ? '模型判断为客观医学知识科普提问。'
                 : '模型判断为症状问诊，需要查询医学资料。'),
-            searchQuery: searchQueries.join(', '),
-            searchQueries,
+            searchQuery: fallbackQueries.join(', '),
+            searchQueries: fallbackQueries,
           }
         }
 

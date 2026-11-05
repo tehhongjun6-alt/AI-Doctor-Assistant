@@ -22,6 +22,7 @@ export interface ConversationSession {
   activeEmergency?: ActiveEmergencyState
   topicMessages: string[]
   lastEvidence: MedicalEvidence[]
+  lastSearchQueries?: string[]
   updatedAt: number
 }
 
@@ -93,6 +94,7 @@ export class ConversationStore {
     category?: MedicalDataCategory
     evidence?: MedicalEvidence[]
     activeEmergency?: ActiveEmergencyState | null
+    searchQueries?: string[]
   }): ConversationSession {
     this.cleanupExpired()
     const stored = this.sessions.get(input.conversationId)
@@ -135,6 +137,11 @@ export class ConversationStore {
         ? undefined
         : (input.activeEmergency ?? existing?.activeEmergency)
 
+    const lastSearchQueries =
+      input.searchQueries && input.searchQueries.length > 0
+        ? input.searchQueries
+        : existing?.lastSearchQueries
+
     const session: ConversationSession = {
       conversationId: input.conversationId,
       ownerId: input.ownerId,
@@ -143,6 +150,7 @@ export class ConversationStore {
       activeEmergency,
       topicMessages,
       lastEvidence,
+      lastSearchQueries,
       updatedAt: Date.now(),
     }
 
