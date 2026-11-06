@@ -1,4 +1,4 @@
-import type { ChatAnswer, ChatHistoryMessage } from '../schemas/chat.js'
+import type { ChatAnswer, ChatHistoryMessage, ChatLanguage } from '../schemas/chat.js'
 
 export type EmergencyCategory =
   | 'airway_emergency'
@@ -37,6 +37,16 @@ interface ContextualEmergencyRule {
 
 export const EMERGENCY_ACTION_TEXT =
   '请立即拨打马来西亚紧急电话 999，并按照接线员指示处理。'
+
+export function emergencyActionText(language: ChatLanguage = 'zh'): string {
+  if (language === 'en') {
+    return 'Please call Malaysia emergency services at 999 immediately and follow the operator’s instructions.'
+  }
+  if (language === 'ms') {
+    return 'Sila hubungi talian kecemasan Malaysia 999 dengan segera dan ikuti arahan operator.'
+  }
+  return EMERGENCY_ACTION_TEXT
+}
 
 const emergencyAction = EMERGENCY_ACTION_TEXT
 
@@ -342,10 +352,13 @@ const EMERGENCY_DISCLAIMER =
 const EMERGENCY_DISCLAIMER_EN =
   '🛡️ Emergency Notice: This assistant provides emergency triage and first-aid guidance only and cannot replace emergency medical care. In life-threatening situations, call 999 immediately.'
 
+const EMERGENCY_DISCLAIMER_MS =
+  '🛡️ Penafian Kecemasan: Pembantu ini hanya menyediakan triage kecemasan dan panduan pertolongan cemas awal, serta tidak boleh menggantikan rawatan perubatan kecemasan profesional. Jika dalam situasi yang mengancam nyawa, sila hubungi 999 dengan segera.'
+
 export function buildEmergencyStructuredAnswer(
   category: EmergencyCategory | undefined,
   reason?: string,
-  language: 'zh' | 'en' = 'zh',
+  language: ChatLanguage = 'zh',
 ): ChatAnswer {
   if (language === 'en') {
     return {
@@ -368,6 +381,30 @@ export function buildEmergencyStructuredAnswer(
       ],
       urgency: 'emergency',
       disclaimer: EMERGENCY_DISCLAIMER_EN,
+    }
+  }
+
+  if (language === 'ms') {
+    return {
+      summary:
+        '🚨 **Amaran Kecemasan Perubatan (Keadaan Mengancam Nyawa Dikesan)**: Penerangan anda menunjukkan kecemasan perubatan yang kritikal. Tolong jangan tunggu perundingan dalam talian — **sila hubungi 999 dengan segera atau pergi ke Jabatan Kecemasan hospital terdekat sekarang!**',
+      possibleCauses: [
+        '1️⃣ **Kecemasan Perubatan Kritikal Akut** — Gejala menunjukkan keadaan yang berpotensi mengancam nyawa dan memerlukan rawatan hospital dengan segera.',
+      ],
+      advice: [
+        '📞 **Hubungi 999 Dengan Segera** — Hubungi talian kecemasan Malaysia (**999**) sekarang atau minta bantuan seseorang untuk membawa anda ke Jabatan Kecemasan terdekat.',
+        '🛋️ **Bertenang & Berehat** — Hentikan semua aktiviti fizikal, buka kunci pintu untuk memudahkan paramedik masuk, dan kekal dalam posisi rehat yang selamat.',
+        '❌ **Jangan Memandu Sendiri** — Jangan sesekali cuba memandu sendiri ke hospital semasa kecemasan perubatan.',
+      ],
+      followUpQuestions: [
+        '🔹 **Bantuan Di Lokasi** — Adakah terdapat ahli keluarga atau orang berdekatan bersama anda sekarang yang boleh membantu menghubungi 999?',
+      ],
+      seekCareWhen: [
+        '🔴 **Tindakan Segera Diperlukan**: Sila hubungi **999** sekarang atau tekan butang di bawah untuk mencari Jabatan Kecemasan hospital terdekat!',
+        '🔴 **Jika Tidak Sedarkan Diri atau Tidak Bernafas**: Mulakan CPR dengan segera di bawah bimbingan operator talian 999.',
+      ],
+      urgency: 'emergency',
+      disclaimer: EMERGENCY_DISCLAIMER_MS,
     }
   }
 

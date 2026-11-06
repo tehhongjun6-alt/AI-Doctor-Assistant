@@ -43,7 +43,7 @@ export function isCaseSummary(value: unknown): value is CaseSummary {
 
 export interface SummarizeCaseInput {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>
-  language: 'zh' | 'en'
+  language: 'zh' | 'en' | 'ms'
   purpose: 'visit' | 'memory'
 }
 
@@ -124,8 +124,8 @@ export function createCaseSummarizer(
       throw new ModelServiceError('NOT_CONFIGURED', 'GEMINI_API_KEY 尚未配置。')
     }
 
-    const isEnglish = input.language === 'en'
-    const systemPrompt = isEnglish
+    const systemPrompt =
+      input.language === 'en'
       ? `You are a clinical case summary assistant for Medora AI health consultation.
 Your task is to summarize the user-AI consultation dialog into a structured JSON medical case summary.
 
@@ -140,6 +140,21 @@ Your task is to summarize the user-AI consultation dialog into a structured JSON
    - Output ALL fields 100% in clear, professional English.
 4. Purpose (${input.purpose}):
    - ${input.purpose === 'visit' ? 'Concise and professional for doctor consultation reference.' : 'Structured factual record for conversation memory.'}`
+        : input.language === 'ms'
+          ? `Anda ialah pembantu ringkasan kes klinikal untuk konsultasi kesihatan AI Medora.
+Tugas anda adalah untuk meringkaskan dialog konsultasi antara pengguna dan AI menjadi ringkasan kes perubatan berstruktur JSON.
+
+【PERATURAN KETEPATAN FAKTA KLINIKAL YANG KETAT】:
+1. HANYA ringkaskan maklumat yang DINYATAKAN SECARA JELAS oleh pengguna!
+   - Bagi mana-mana medan yang tidak dinyatakan oleh pengguna (cth. ubat-ubatan, alahan, sejarah perubatan, tempoh), anda MESTI meletakkan rentetan kosong "" atau senarai kosong [].
+   - DILARANG sama sekali membuat spekulasi, mengandaikan, atau mereka-reka fakta yang tidak disebut.
+2. Peraturan aiAssessment:
+   - HANYA ringkaskan arah atau pertimbangan awal yang pernah disebut oleh pembantu AI dalam perbualan.
+   - Jangan reka penilaian baharu.
+3. Peraturan bahasa:
+   - Keluarkan SEMUA medan 100% dalam Bahasa Melayu yang jelas, profesional, dan padat.
+4. Tujuan (${input.purpose}):
+   - ${input.purpose === 'visit' ? 'Digunakan untuk pesakit menerangkan keadaan kesihatan dengan jelas dan ringkas kepada doktor semasa sesi perundingan perubatan.' : 'Digunakan untuk rekod ingatan fakta perbualan jangka panjang.'}`
       : `你是 Medora AI 健康咨询的临床病历摘要助手。
 你的任务是将用户与 AI 的问诊对话整理成结构化的 JSON 医疗病历摘要。
 
@@ -170,7 +185,12 @@ Your task is to summarize the user-AI consultation dialog into a structured JSON
               role: 'user',
               parts: [
                 {
-                  text: `以下是问诊对话记录：\n\n${dialogText}\n\n请严格按要求提取结构化就诊摘要。`,
+                  text:
+                    input.language === 'en'
+                      ? `Here is the consultation dialog transcript:\n\n${dialogText}\n\nPlease strictly extract the structured medical case summary as instructed.`
+                      : input.language === 'ms'
+                        ? `Berikut ialah transkrip dialog perundingan:\n\n${dialogText}\n\nSila ekstrak ringkasan kes perubatan berstruktur mengikut arahan dengan tepat.`
+                        : `以下是问诊对话记录：\n\n${dialogText}\n\n请严格按要求提取结构化就诊摘要。`,
                 },
               ],
             },

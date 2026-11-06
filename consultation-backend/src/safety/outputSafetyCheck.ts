@@ -1,4 +1,4 @@
-import type { ChatAnswer } from '../schemas/chat.js'
+import type { ChatAnswer, ChatLanguage } from '../schemas/chat.js'
 
 export interface OutputSafetyCheckResult {
   passed: boolean
@@ -14,6 +14,12 @@ const DEFAULT_DISCLAIMER_EN =
 
 const MEDICAL_QA_DISCLAIMER_EN =
   '🛡️ Health Info Note: The above content is for general health education only. Please consult a healthcare professional if you experience any symptoms.'
+
+const DEFAULT_DISCLAIMER_MS =
+  '🛡️ Penafian: Pembantu ini menyediakan maklumat kesihatan umum untuk rujukan sahaja dan tidak menggantikan diagnosis, pemeriksaan atau rawatan perubatan profesional. Sila rujuk doktor jika anda berasa tidak sihat.'
+
+const MEDICAL_QA_DISCLAIMER_MS =
+  '🛡️ Nota Info Kesihatan: Kandungan di atas adalah untuk pendidikan kesihatan umum sahaja. Sila rujuk profesional perubatan jika anda mengalami sebarang simptom.'
 
 const UNSAFE_MEDICAL_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   {
@@ -55,7 +61,7 @@ function isStringArray(value: unknown): value is string[] {
 }
 
 export function createSafeFallbackAnswer(
-  language: 'zh' | 'en' = 'zh',
+  language: ChatLanguage = 'zh',
 ): ChatAnswer {
   if (language === 'en') {
     return {
@@ -75,6 +81,27 @@ export function createSafeFallbackAnswer(
         '🔴 **Emergency Warning** — If you experience difficulty breathing, severe chest pain, confusion, uncontrolled bleeding, or rapid worsening, call emergency services (e.g., 999 in Malaysia) or go to the nearest Emergency Department immediately.',
       ],
       disclaimer: DEFAULT_DISCLAIMER_EN,
+    }
+  }
+
+  if (language === 'ms') {
+    return {
+      summary:
+        'Maaf, saya tidak dapat menjana cadangan kesihatan yang lengkap untuk soalan ini pada masa ini. Sila cuba jelaskan simptom anda, tempoh masa, atau nama ubat dengan lebih terperinci.',
+      followUpQuestions: [
+        '🔹 **Simptom Utama & Tempoh** — Apakah simptom utama yang anda alami dan sudah berapa lama ia berlarutan?',
+        '🔹 **Simptom Berkaitan** — Adakah anda mengalami demam, kesakitan, atau simptom lain yang berkaitan?',
+      ],
+      possibleCauses: [],
+      urgency: 'medium',
+      advice: [
+        '✅ **Elakkan Mengambil Ubat Sendiri Secara Melulu** — Jangan mengubah dos ubat preskripsi berdasarkan maklumat yang tidak pasti.',
+        '🏥 **Rujuk Doktor** — Jika simptom berterusan atau semakin teruk, sila ke klinik atau hospital berhampiran untuk pemeriksaan profesional.',
+      ],
+      seekCareWhen: [
+        '🔴 **Amaran Kecemasan** — Jika anda mengalami kesukaran bernafas, sakit dada yang teruk, kekeliruan, pendarahan yang tidak terkawal, atau simptom bertambah teruk secara mendadak, sila hubungi talian kecemasan (seperti 999 di Malaysia) atau pergi ke Jabatan Kecemasan terdekat dengan segera.',
+      ],
+      disclaimer: DEFAULT_DISCLAIMER_MS,
     }
   }
 
@@ -101,7 +128,7 @@ export function createSafeFallbackAnswer(
 export function validateAndSanitizeAnswer(
   rawAnswer: unknown,
   mode: 'direct_model' | 'medical_qa' | 'medical_api' | 'emergency' | 'clarification',
-  language: 'zh' | 'en' = 'zh',
+  language: ChatLanguage = 'zh',
 ): OutputSafetyCheckResult {
   if (!isRecord(rawAnswer)) {
     return {
@@ -193,6 +220,8 @@ export function validateAndSanitizeAnswer(
     const defaultQaDisclaimer =
       language === 'en'
         ? MEDICAL_QA_DISCLAIMER_EN
+        : language === 'ms'
+          ? MEDICAL_QA_DISCLAIMER_MS
         : '🛡️ 科普提示：以上内容仅供医学健康知识参考，如遇身体不适请及时咨询专业医生。'
     return {
       passed: true,
@@ -220,7 +249,11 @@ export function validateAndSanitizeAnswer(
       seekCareWhen: seekCareWhen.slice(0, 8),
       disclaimer:
         disclaimer ||
-        (language === 'en' ? DEFAULT_DISCLAIMER_EN : DEFAULT_DISCLAIMER),
+        (language === 'en'
+          ? DEFAULT_DISCLAIMER_EN
+          : language === 'ms'
+            ? DEFAULT_DISCLAIMER_MS
+            : DEFAULT_DISCLAIMER),
     },
   }
 }

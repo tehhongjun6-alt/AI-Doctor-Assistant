@@ -1,6 +1,6 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import { extractPartialSummary } from './partialSummary.js'
-import type { ChatAnswer, ChatHistoryMessage } from '../schemas/chat.js'
+import type { ChatAnswer, ChatHistoryMessage, ChatLanguage } from '../schemas/chat.js'
 import type { CaseSummary } from './caseSummary.js'
 import type { MedicalEvidence } from './medicalData/medicalDataTypes.js'
 
@@ -24,7 +24,7 @@ export class ModelServiceError extends Error {
 
 export interface HealthConsultationInput {
   message: string
-  language?: 'zh' | 'en'
+  language?: ChatLanguage
   history?: ChatHistoryMessage[]
   evidence?: MedicalEvidence[]
   mode?: 'direct_model' | 'medical_qa' | 'medical_api' | 'emergency'
@@ -362,6 +362,15 @@ The user's system language is strictly locked to English ('en').
    - For disclaimer, start with "🛡️ Disclaimer: This assistant provides general health information for reference only and does not replace professional medical diagnosis or treatment." (or empty string "" if mode is direct_model).
    - For medical_qa closing prompt, use English: "💡 Are you looking for general health information, or are you or someone close to you experiencing symptoms? Feel free to share any details so I can help analyze further."
 3. Never output any Chinese characters in any JSON field when language is 'en'.`
+        : input.language === 'ms'
+          ? `\n\n【PERATURAN SISTEM BAHASA KRITIKAL — BAHASA MELAYU (MS) SAHAJA】:
+Bahasa sistem pengguna ditetapkan kepada Bahasa Melayu ('ms').
+1. Walaupun pengguna menulis dalam bahasa Cina, Inggeris, atau Melayu, anda WAJIB menulis SEMUA medan JSON (summary, followUpQuestions, possibleCauses, advice, seekCareWhen, disclaimer) 100% dalam Bahasa Melayu yang semula jadi, profesional, dan mesra pesakit.
+2. Tukarkan mana-mana awalan templat kepada Bahasa Melayu yang betul:
+   - Untuk ringkasan kecemasan (emergency summary), mulakan dengan "🚨 **Amaran Kecemasan Perubatan (nama keadaan)**: " dan bukannya teks bahasa lain.
+   - Untuk penafian (disclaimer), mulakan dengan "🛡️ Penafian: Pembantu ini menyediakan maklumat kesihatan umum untuk rujukan sahaja dan tidak menggantikan diagnosis atau rawatan perubatan profesional." (atau rentetan kosong "" jika mod ialah direct_model).
+   - Untuk soalan penutup medical_qa, gunakan Bahasa Melayu: "💡 Adakah anda mencari maklumat kesihatan umum, atau anda/orang terdekat sedang mengalami simptom? Sila kongsikan maklumat lanjut supaya saya boleh membantu menganalisis."
+3. Jangan sekali-kali mengeluarkan sebarang aksara Cina dalam mana-mana medan JSON apabila bahasa ialah 'ms'.`
         : `\n\n【核心系统语言强制规则 — 仅限简体中文 (ZH)】：
 当前系统界面语言已锁定为简体中文（'zh'）。
 无论用户上方使用的是英文、马来文还是中文提问，你生成的 JSON 所有字段（summary、followUpQuestions、possibleCauses、advice、seekCareWhen、disclaimer）都必须 100% 使用自然、专业、温和的简体中文作答（药名如 Panadol、Ibuprofen 可保留括号对照），绝不允许整句使用英文回答！`

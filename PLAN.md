@@ -395,7 +395,7 @@
 
 **验收重点**：没有任何音频送到我们的后端；不支持的浏览器不会出现坏掉的按钮
 
-### [ ] 第 11a 步｜马来语：后端
+### [x] 第 11a 步｜马来语：后端
 
 **做法**：
 1. `schemas/chat.ts`：`ChatLanguage` 改成 `'zh' | 'en' | 'ms'`；第 151 行改成接受 `'ms'`，其他值仍然当作 `'zh'`
@@ -463,8 +463,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 10 步已完成（新建 `types/speech.d.ts` 声明 Web Speech API 接口；新建 `chat/useSpeechInput.ts` hook，支持 `zh-CN` / `en-US` 语种映射与流式中间转录；在 `ChatPanel.tsx` 输入框右侧增加麦克风按钮并在支持的浏览器上展示，录音时带有脉冲动效，出现 `not-allowed` 时提示权限引导，底部附有隐私说明小字；`i18n.ts` 补充对应中英文案。新增 `speechInput.test.tsx` 4 个测试，覆盖浏览器支持/不支持分支、语言配置、输入框文本填充与权限拒绝报错展示。前端 9 个测试套件 35 个用例全过、后端 18 个测试套件 85 个用例全过、两端构建 0 错误）
-- **下一步**：第 11a 步（马来语：后端）
+- **当前进度**：第 11a 步已完成（`schemas/chat.ts` 的 `ChatLanguage` 扩展为 `'zh' | 'en' | 'ms'` 并在 `validateChatRequest` 中支持 `'ms'`；`geminiHealthConsultation.ts` 扩展 `language` 类型并在提示词中新增针对 `'ms'` 的 100% 自然 Bahasa Melayu 规则、急症与免责前缀；`safety/emergencyCheck.ts` 新增马来语急症固定模板（含 999 且零中文字符）与 `emergencyActionText(language)` 函数，并在 `app.ts` 中替换；`safety/outputSafetyCheck.ts` 的 `createSafeFallbackAnswer` 和免责声明新增完整马来语支持；`services/caseSummary.ts` 扩展支持 `'ms'` 语言提示词。新增 `tests/malay.test.ts` 9 个测试，后端 19 个测试套件 94 个测试全部通过、前端 9 个测试套件 36 个测试全部通过、两端构建 0 错误）
+- **下一步**：第 11b 步（马来语：前端）
 
 ## 6. 分工
 

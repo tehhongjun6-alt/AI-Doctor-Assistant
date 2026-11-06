@@ -1,5 +1,5 @@
 export type ChatRole = 'user' | 'assistant'
-export type ChatLanguage = 'zh' | 'en'
+export type ChatLanguage = 'zh' | 'en' | 'ms'
 
 export interface ChatImageInput {
   id: string
@@ -154,7 +154,8 @@ export function validateChatRequest(input: unknown): ValidationResult {
     return { valid: false, errors }
   }
 
-  const language: ChatLanguage = input.language === 'en' ? 'en' : 'zh'
+  const language: ChatLanguage =
+    input.language === 'en' ? 'en' : input.language === 'ms' ? 'ms' : 'zh'
 
   return {
     valid: true,

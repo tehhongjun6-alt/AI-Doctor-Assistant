@@ -23,6 +23,7 @@ import {
   buildEmergencyStructuredAnswer,
   checkEmergencyRisk,
   EMERGENCY_ACTION_TEXT,
+  emergencyActionText,
 } from './safety/emergencyCheck.js'
 import { validateChatRequest, type ChatHistoryMessage } from './schemas/chat.js'
 import {
@@ -447,7 +448,12 @@ export function createApp(dependencies: AppDependencies = {}) {
         return
       }
 
-      const language = request.body?.language === 'en' ? 'en' : 'zh'
+      const language =
+        request.body?.language === 'en'
+          ? 'en'
+          : request.body?.language === 'ms'
+            ? 'ms'
+            : 'zh'
       const inputMessages = (messages ?? []).map((m) => ({
         role: m.role,
         content: m.content,
@@ -742,7 +748,7 @@ export function createApp(dependencies: AppDependencies = {}) {
               isEmergency: true,
               category,
               reason,
-              action: EMERGENCY_ACTION_TEXT,
+              action: emergencyActionText(language),
             },
             ...(medicalDataRoute ? { medicalDataRoute } : {}),
             mapCareLevel: 'hospital',
@@ -930,7 +936,7 @@ export function createApp(dependencies: AppDependencies = {}) {
                   emergency: {
                     isEmergency: true,
                     reason: answer.summary,
-                    action: EMERGENCY_ACTION_TEXT,
+                    action: emergencyActionText(language),
                   },
                 }
               : {}),
