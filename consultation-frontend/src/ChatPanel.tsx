@@ -35,6 +35,7 @@ interface ChatMessage {
   answer?: HealthAnswer
   emergency?: boolean
   sources?: Source[]
+  mapCareLevel?: 'hospital' | 'clinic' | null
 }
 
 interface ChatApiResponse {
@@ -44,6 +45,7 @@ interface ChatApiResponse {
     conversationId?: string
     answer?: HealthAnswer
     sources?: Source[]
+    mapCareLevel?: 'hospital' | 'clinic' | null
     emergency?: {
       reason?: string
       action?: string
@@ -57,7 +59,7 @@ interface ChatApiResponse {
 interface ChatPanelProps {
   conversationId?: string
   onConversationChanged?: (newId?: string) => void
-  onOpenMap: () => void
+  onOpenMap: (careLevel?: 'hospital' | 'clinic') => void
   lang: Language
   onChangeLang: (lang: Language) => void
   onOpenMobileMenu: () => void
@@ -248,6 +250,7 @@ function ChatPanel({
             answer: m.answer ?? undefined,
             emergency: Boolean(m.isEmergency),
             sources: m.sources ?? undefined,
+            mapCareLevel: m.mapCareLevel ?? (m.isEmergency ? 'hospital' : undefined),
             timestamp: m.createdAt
               ? formatTimeFromDate(new Date(m.createdAt))
               : getCurrentTime(),
@@ -355,6 +358,7 @@ function ChatPanel({
                 .join('\n'),
             answer: result.data?.answer,
             emergency: true,
+            mapCareLevel: 'hospital',
             timestamp: responseTime,
           },
         ])
@@ -374,6 +378,7 @@ function ChatPanel({
           content: answerData.summary ?? '',
           answer: answerData,
           sources: result.data?.sources,
+          mapCareLevel: result.data?.mapCareLevel,
           timestamp: responseTime,
         },
       ])
@@ -658,32 +663,42 @@ function ChatPanel({
                     </p>
                   </div>
 
-                  {message.answer &&
-                    (isEmergency ? (
-                      <div className="emergency-action-zone">
-                        {renderSections(message.answer)}
-                        <button
-                          className="map-link-button"
-                          type="button"
-                          onClick={onOpenMap}
-                        >
-                          {t.viewNearbyHospitals}
-                        </button>
-                      </div>
-                    ) : (
+                  {(() => {
+                    if (!message.answer) return null
+                    const careLevel =
+                      message.mapCareLevel ??
+                      (isEmergency || message.answer.urgency === 'high'
+                        ? 'hospital'
+                        : null)
+
+                    const mapButton = careLevel ? (
+                      <button
+                        className="map-link-button"
+                        type="button"
+                        onClick={() => onOpenMap(careLevel)}
+                      >
+                        {careLevel === 'clinic'
+                          ? t.viewNearbyClinics
+                          : t.viewNearbyHospitals}
+                      </button>
+                    ) : null
+
+                    if (isEmergency) {
+                      return (
+                        <div className="emergency-action-zone">
+                          {renderSections(message.answer)}
+                          {mapButton}
+                        </div>
+                      )
+                    }
+
+                    return (
                       <>
                         {renderSections(message.answer)}
-                        {message.answer.urgency === 'high' && (
-                          <button
-                            className="map-link-button"
-                            type="button"
-                            onClick={onOpenMap}
-                          >
-                            {t.viewNearbyHospitals}
-                          </button>
-                        )}
+                        {mapButton}
                       </>
-                    ))}
+                    )
+                  })()}
 
                   {message.sources && message.sources.length > 0 && (
                     <div className="sources-section">

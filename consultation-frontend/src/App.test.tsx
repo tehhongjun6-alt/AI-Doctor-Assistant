@@ -485,4 +485,48 @@ describe('multi-conversation frontend (Step 5)', () => {
     expect(requestBody).not.toHaveProperty('history')
     expect(requestBody.message).toBe('无历史发送校验')
   })
+
+  it('displays "查看附近诊所和药房" when response has mapCareLevel: clinic', async () => {
+    const clinicAnswer = {
+      success: true,
+      data: {
+        conversationId: 'conversation-1',
+        messageId: 'message-clinic-1',
+        answer: {
+          summary: '轻微感冒症状，建议多喝温水。',
+          followUpQuestions: [],
+          possibleCauses: ['普通感冒'],
+          urgency: 'low',
+          advice: ['多喝温水，保证充足睡眠。'],
+          seekCareWhen: ['持续高热不退。'],
+          disclaimer: '这不是正式医疗诊断。',
+        },
+        mapCareLevel: 'clinic',
+        sources: [],
+      },
+    }
+
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, _init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        if (url.includes('/api/conversations')) {
+          return jsonResponse({ conversations: [], limit: 3 })
+        }
+        return jsonResponse(clinicAnswer)
+      },
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.type(screen.getByLabelText(INPUT_LABEL), '有点轻微流鼻涕')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
+
+    expect(await screen.findByText('轻微感冒症状，建议多喝温水。')).toBeTruthy()
+    const clinicBtn = screen.getByRole('button', {
+      name: '查看附近诊所和药房',
+    })
+    expect(clinicBtn).toBeTruthy()
+  })
 })

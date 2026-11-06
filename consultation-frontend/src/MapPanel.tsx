@@ -16,9 +16,11 @@ interface Hospital {
   longitude: number
   phone: string | null
   mapUri: string | null
+  type?: 'hospital' | 'clinic' | 'pharmacy'
 }
 
 interface MapPanelProps {
+  careLevel?: 'hospital' | 'clinic'
   onBackToChat?: () => void
   isVisible?: boolean
   lang: Language
@@ -76,6 +78,7 @@ function createHospitalPopup(hospital: Hospital) {
 }
 
 export default function MapPanel({
+  careLevel = 'hospital',
   onBackToChat,
   isVisible,
   lang,
@@ -91,6 +94,7 @@ export default function MapPanel({
   const mapInstanceRef = useRef<maplibregl.Map | null>(null)
   const userMarkerRef = useRef<maplibregl.Marker | null>(null)
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map())
+  const centerRef = useRef<[number, number]>([101.6869, 3.139])
   const [status, setStatus] = useState<MapStatus>('loading')
   const [errorMessage, setErrorMessage] = useState('')
   const [hospitals, setHospitals] = useState<Hospital[]>([])
@@ -107,7 +111,11 @@ export default function MapPanel({
     }
   }, [isVisible])
 
-  async function loadHospitals(map: maplibregl.Map, center: [number, number]) {
+  async function loadHospitals(
+    map: maplibregl.Map,
+    center: [number, number],
+    level: 'hospital' | 'clinic' = careLevel,
+  ) {
     const response = await authFetch('/api/hospitals/nearby', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -115,6 +123,7 @@ export default function MapPanel({
         latitude: center[1],
         longitude: center[0],
         radius: 5000,
+        careLevel: level,
       }),
     })
     const data = (await response.json()) as {
@@ -133,9 +142,16 @@ export default function MapPanel({
     markersRef.current.forEach((marker) => marker.remove())
     markersRef.current.clear()
 
-    // 重新添加医院红色标记
+    // 重新添加标记：药房绿色、诊所蓝色、医院红色
     nearbyHospitals.forEach((hospital) => {
-      const marker = new maplibregl.Marker({ color: '#dc2626' })
+      const color =
+        hospital.type === 'pharmacy'
+          ? '#10b981'
+          : hospital.type === 'clinic'
+          ? '#0ea5e9'
+          : '#dc2626'
+
+      const marker = new maplibregl.Marker({ color })
         .setLngLat([hospital.longitude, hospital.latitude])
         .setPopup(
           new maplibregl.Popup({ offset: 12 }).setDOMContent(
@@ -146,6 +162,13 @@ export default function MapPanel({
       markersRef.current.set(hospital.id, marker)
     })
   }
+
+  // careLevel 变化时重新检索
+  useEffect(() => {
+    if (mapInstanceRef.current && status === 'ready') {
+      void loadHospitals(mapInstanceRef.current, centerRef.current, careLevel)
+    }
+  }, [careLevel])
 
   useEffect(() => {
     if (!apiKey) {
@@ -170,6 +193,7 @@ export default function MapPanel({
       }
 
       if (cancelled || !mapElement.current) return
+      centerRef.current = center
 
       try {
         const map = new maplibregl.Map({
@@ -229,6 +253,7 @@ export default function MapPanel({
         position.coords.latitude,
       ]
 
+      centerRef.current = center
       mapInstanceRef.current.flyTo({ center, zoom: 13.5 })
 
       if (userMarkerRef.current) {
@@ -271,7 +296,10 @@ export default function MapPanel({
   }
 
   return (
-    <section className="modern-map-panel" aria-label={t.mapMainTitle}>
+    <section
+      className="modern-map-panel"
+      aria-label={careLevel === 'clinic' ? t.mapMainTitleClinics : t.mapMainTitle}
+    >
       {/* 现代统一顶栏 */}
       <header className="map-view-header">
         <div className="map-header-left">
@@ -299,7 +327,9 @@ export default function MapPanel({
             </button>
           )}
           <div className="map-header-title-wrap">
-            <h1 className="map-main-title">{t.mapMainTitle}</h1>
+            <h1 className="map-main-title">
+              {careLevel === 'clinic' ? t.mapMainTitleClinics : t.mapMainTitle}
+            </h1>
             <span className="map-status-chip">
               <span className="chip-dot"></span>
               {t.mapStatusChip}
@@ -404,9 +434,20 @@ export default function MapPanel({
           )}
         </div>
 
-        <aside className="hospital-card-stream" aria-label={t.recommendListTitle}>
+        <aside
+          className="hospital-card-stream"
+          aria-label={
+            careLevel === 'clinic'
+              ? t.recommendListTitleClinics
+              : t.recommendListTitle
+          }
+        >
           <div className="stream-header-bar">
-            <span>{t.recommendListTitle}</span>
+            <span>
+              {careLevel === 'clinic'
+                ? t.recommendListTitleClinics
+                : t.recommendListTitle}
+            </span>
             <span className="stream-count-tag">
               {hospitals.length}
               {t.countSuffix}
@@ -434,6 +475,36 @@ export default function MapPanel({
                     <h2 className="hospital-item-name" title={hospital.name}>
                       {hospital.name}
                     </h2>
+                    {hospital.type && (
+                      <span
+                        style={{
+                          marginLeft: 'auto',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          flexShrink: 0,
+                          backgroundColor:
+                            hospital.type === 'pharmacy'
+                              ? '#ecfdf5'
+                              : hospital.type === 'clinic'
+                              ? '#f0f9ff'
+                              : '#fef2f2',
+                          color:
+                            hospital.type === 'pharmacy'
+                              ? '#059669'
+                              : hospital.type === 'clinic'
+                              ? '#0284c7'
+                              : '#dc2626',
+                        }}
+                      >
+                        {hospital.type === 'pharmacy'
+                          ? t.typePharmacy
+                          : hospital.type === 'clinic'
+                          ? t.typeClinic
+                          : t.typeHospital}
+                      </span>
+                    )}
                   </div>
 
                   <p className="hospital-item-address">

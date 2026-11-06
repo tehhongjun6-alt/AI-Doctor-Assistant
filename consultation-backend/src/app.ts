@@ -477,6 +477,7 @@ export function createApp(dependencies: AppDependencies = {}) {
               action: EMERGENCY_ACTION_TEXT,
             },
             ...(medicalDataRoute ? { medicalDataRoute } : {}),
+            mapCareLevel: 'hospital',
             showHospitalMap: true,
           },
         })
@@ -600,6 +601,20 @@ export function createApp(dependencies: AppDependencies = {}) {
 
         const answer = safetyCheck.answer
         const isLayer3Emergency = answer.urgency === 'emergency'
+        const isEmergencyLevel =
+          isLayer3Emergency ||
+          answer.urgency === 'emergency' ||
+          answer.urgency === 'high'
+
+        let mapCareLevel: 'hospital' | 'clinic' | null = null
+        if (isEmergencyLevel) {
+          mapCareLevel = 'hospital'
+        } else if (
+          medicalDataRoute.route === 'medical_api' &&
+          (answer.urgency === 'low' || answer.urgency === 'medium')
+        ) {
+          mapCareLevel = 'clinic'
+        }
 
         await conversationRepository.appendTurn({
           conversationId,
@@ -617,10 +632,7 @@ export function createApp(dependencies: AppDependencies = {}) {
               }
             : null,
           isEmergency: isLayer3Emergency,
-          mapCareLevel:
-            isLayer3Emergency || answer.urgency === 'high'
-              ? 'hospital'
-              : 'clinic',
+          mapCareLevel,
           useForContext: safetyCheck.passed, // 兜底回答不进入后续上下文
         })
 
@@ -648,8 +660,8 @@ export function createApp(dependencies: AppDependencies = {}) {
               passed: safetyCheck.passed,
               ...(safetyCheck.reason ? { reason: safetyCheck.reason } : {}),
             },
-            showHospitalMap:
-              answer.urgency === 'high' || answer.urgency === 'emergency',
+            mapCareLevel,
+            showHospitalMap: mapCareLevel !== null,
           },
         })
       } catch (error) {
@@ -708,7 +720,8 @@ export function createApp(dependencies: AppDependencies = {}) {
   app.post('/api/chat/stream', requireAuth, handleChat('stream'))
 
   app.post('/api/hospitals/nearby', requireAuth, async (request, response) => {
-    const { latitude, longitude, radius = 5000 } = request.body ?? {}
+    const { latitude, longitude, radius = 5000, careLevel } =
+      request.body ?? {}
 
     if (
       !isValidNumber(latitude) ||
@@ -725,11 +738,23 @@ export function createApp(dependencies: AppDependencies = {}) {
       return
     }
 
+    if (
+      careLevel !== undefined &&
+      careLevel !== 'hospital' &&
+      careLevel !== 'clinic'
+    ) {
+      response
+        .status(400)
+        .json({ error: '就医级别无效（需为 hospital 或 clinic）。' })
+      return
+    }
+
     try {
       const hospitals = await searchHospitals({
         latitude,
         longitude,
         radius,
+        ...(careLevel ? { careLevel } : {}),
       })
       response.json({ hospitals })
     } catch (error) {

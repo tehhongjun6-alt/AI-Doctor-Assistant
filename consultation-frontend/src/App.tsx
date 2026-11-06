@@ -96,6 +96,7 @@ function App() {
   const [lang, setLang] = useState<Language>(loadLanguage)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [hasOpenedMap, setHasOpenedMap] = useState(false)
+  const [mapCareLevel, setMapCareLevel] = useState<'hospital' | 'clinic'>('hospital')
 
   // 多对话状态（第 5 步）
   const [conversations, setConversations] = useState<ConversationItem[]>([])
@@ -170,12 +171,16 @@ function App() {
     setIsMobileMenuOpen(false)
     setActiveSection('chat')
     setHasOpenedMap(false)
+    setMapCareLevel('hospital')
     setConversations([])
     setActiveConversationId(undefined)
   }
 
   function handleSelectSection(section: ActiveSection) {
-    if (section === 'map') setHasOpenedMap(true)
+    if (section === 'map') {
+      setHasOpenedMap(true)
+      setMapCareLevel('hospital')
+    }
     setActiveSection(section)
     setIsMobileMenuOpen(false)
   }
@@ -314,7 +319,11 @@ function App() {
               key={activeConversationId ?? 'new'}
               conversationId={activeConversationId}
               onConversationChanged={handleConversationChanged}
-              onOpenMap={() => handleSelectSection('map')}
+              onOpenMap={(careLevel) => {
+                setMapCareLevel(careLevel || 'hospital')
+                setHasOpenedMap(true)
+                setActiveSection('map')
+              }}
               lang={lang}
               onChangeLang={setLang}
               onOpenMobileMenu={() =>
@@ -337,6 +346,7 @@ function App() {
                 }
               >
                 <MapPanel
+                  careLevel={mapCareLevel}
                   isVisible={activeSection === 'map'}
                   onBackToChat={() => handleSelectSection('chat')}
                   lang={lang}

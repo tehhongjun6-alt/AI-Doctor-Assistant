@@ -1,7 +1,11 @@
+export type CareLevel = 'hospital' | 'clinic'
+export type PlaceType = 'hospital' | 'clinic' | 'pharmacy'
+
 export interface NearbySearchInput {
   latitude: number
   longitude: number
   radius: number
+  careLevel?: CareLevel
 }
 
 export interface Hospital {
@@ -12,6 +16,7 @@ export interface Hospital {
   longitude: number
   phone: string | null
   mapUri: string | null
+  type?: PlaceType
 }
 
 interface GeoapifyFeature {
@@ -21,6 +26,7 @@ interface GeoapifyFeature {
     formatted?: string
     lat?: number
     lon?: number
+    categories?: string[]
     contact?: {
       phone?: string
     }
@@ -40,6 +46,23 @@ export class MapServiceError extends Error {
   }
 }
 
+function resolvePlaceType(categories: string[] = []): PlaceType {
+  if (categories.includes('healthcare.hospital')) return 'hospital'
+  if (categories.includes('healthcare.pharmacy')) return 'pharmacy'
+  return 'clinic'
+}
+
+function defaultPlaceName(type: PlaceType): string {
+  switch (type) {
+    case 'hospital':
+      return '医院'
+    case 'pharmacy':
+      return '药房'
+    case 'clinic':
+      return '诊所'
+  }
+}
+
 export async function searchGeoapifyHospitals(
   input: NearbySearchInput,
 ): Promise<Hospital[]> {
@@ -49,8 +72,14 @@ export async function searchGeoapifyHospitals(
     throw new MapServiceError('NOT_CONFIGURED', 'GEOAPIFY_API_KEY is missing')
   }
 
+  const careLevel = input.careLevel ?? 'hospital'
+  const categories =
+    careLevel === 'clinic'
+      ? 'healthcare.clinic_or_praxis,healthcare.pharmacy'
+      : 'healthcare.hospital'
+
   const parameters = new URLSearchParams({
-    categories: 'healthcare.hospital',
+    categories,
     filter: `circle:${input.longitude},${input.latitude},${input.radius}`,
     bias: `proximity:${input.longitude},${input.latitude}`,
     limit: '10',
@@ -83,15 +112,19 @@ export async function searchGeoapifyHospitals(
       return []
     }
 
+    const type = resolvePlaceType(properties.categories)
+    const name = properties.name?.trim() || defaultPlaceName(type)
+
     return [
       {
         id: properties.place_id,
-        name: properties.name ?? '医院',
+        name,
         address: properties.formatted ?? '暂无地址',
         latitude,
         longitude,
         phone: properties.contact?.phone ?? null,
         mapUri: `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=16/${latitude}/${longitude}`,
+        type,
       },
     ]
   })

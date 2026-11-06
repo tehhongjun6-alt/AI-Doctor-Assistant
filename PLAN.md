@@ -263,7 +263,16 @@ alter table public.conversation_messages enable row level security;
 
 **验收重点**：`App.test.tsx` 只改了 sessionStorage 相关的部分；所有新文字都有中文和英文；【你做】手机版和电脑版各打开一次，看对话列表的位置和「已满」显示
 
-### [ ] 第 6 步｜A12：地图按病情推荐（两边都改）
+### [x] 第 6 步｜A12：地图按病情推荐（两边都改）
+
+**已实现**
+- 后端 `services/geoapifyPlaces.ts`：支持 `careLevel: 'hospital' | 'clinic'`，对应 Geoapify 分类 `healthcare.hospital` 与 `healthcare.clinic_or_praxis,healthcare.pharmacy`，按类别返回 `type: 'hospital' | 'clinic' | 'pharmacy'` 并赋予缺省兜底名称。
+- 后端 `app.ts`：`/api/hospitals/nearby` 接收并校验 `careLevel`（非法回 400）；聊天接口依据路由与病情轻重判定 `mapCareLevel`（急症/高风险为 `'hospital'`，`medical_api` 且低/中风险为 `'clinic'`，其他为 `null`），存入 `conversation_messages.map_care_level` 并随聊天结果回传。
+- 前端 `ChatPanel`：聊天回答依据 `mapCareLevel` 动态展示「查看附近医院」或「查看附近诊所和药房」，点击带参回调 `onOpenMap(careLevel)`。
+- 前端 `App.tsx`：维护 `mapCareLevel` 状态；侧边选单直接打开默认 `'hospital'`，聊天卡片点击按实际级别传入。
+- 前端 `MapPanel`：接收 `careLevel` prop并在其变更时重新拉取周边机构，动态切换顶栏标题、列表标题，并对医院（红色）、诊所（天蓝色）、药房（翠绿色）使用区分标记与类别标签。
+- 前端 `i18n.ts`：完善诊所与药房、各机构类型的中英文双语对照。
+- 测试与验证：新增后端 `tests/geoapifyPlaces.test.ts`（4 个测试）及前端 `App.test.tsx` 针对 clinic 按钮的渲染测试。后端 55 个测试、前端 14 个测试全通，双端构建通过。
 
 **做法**
 1. 后端 `services/geoapifyPlaces.ts`：
@@ -307,8 +316,8 @@ alter table public.conversation_messages enable row level security;
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 5 步已完成（多对话前端组件 ConversationList、ChatPanel 切换/加载历史、i18n 中英双语、13 个前端测试与 51 个后端测试全过）
-- **下一步**：第 6 步（A12：地图按病情推荐）
+- **当前进度**：第 6 步已完成（后端支持 careLevel 筛选、分类适配、chat mapCareLevel 判断及 55 个后端测试；前端支持按病情跳转、clinic/hospital 动态标题与标记颜色、中英双语、14 个前端测试及双端 build 全过）
+- **下一步**：第 7 步（部署和线上验证）
 
 ## 6. 分工
 
