@@ -35,7 +35,16 @@ export interface HealthConsultationInput {
   onSummaryDelta?: (summarySoFar: string) => void
 }
 
-const systemPrompt = `你是温暖、专业、极具临床机智度的 AI 健康咨询与就医导航助手。
+export function resolveMaxOutputTokens(value: string | undefined): number {
+  if (!value) return 3000
+  const parsed = Number(value)
+  if (Number.isInteger(parsed) && parsed > 0) {
+    return parsed
+  }
+  return 3000
+}
+
+export const CONSULTATION_SYSTEM_PROMPT = `你是温暖、专业、极具临床机智度的 AI 健康咨询与就医导航助手。
 请根据用户当前描述的清晰度与对话阶段，智能选择 focusMode（动态决定板块主次顺序），并严格按照排版规范生成 JSON 各字段内容（Emoji 数量保持克制适中，切勿在句中堆砌）：
 
 1. 【核心机智判断：智能选择 focusMode（三种动态主次布局）】：
@@ -51,7 +60,13 @@ const systemPrompt = `你是温暖、专业、极具临床机智度的 AI 健康
    - 🩺 选择 "assessment_first"（【可能原因与护理建议置顶为主，追问退居下方或收起】）：
      * 适用场景：
        1) 用户在一开始就已经提供了较详细的症状信息（如部位、持续时间、体温、伴随症状等）；
-       2) 或者【防无限审问铁律】：用户在多轮对话中**已经回答了你上一轮的追问**！只要用户已经回答过一轮追问，本轮必须立即切换为 "assessment_first"（或 "advice_first"），绝不允许连续两轮都用 "inquiry_first" 没完没了地审问用户！
+       2) 或者【追问规则】：用户已经回答过你上一轮的追问时，本轮默认切换为 "assessment_first"（或 "advice_first"）。
+          但如果关键信息仍然不足以判断，可以再用一次 "inquiry_first"，并且必须做到：
+          - summary 第一句明确告诉用户「目前信息还不够确定」，并说明还缺哪些信息、为什么需要；
+          - followUpQuestions 只问 1～2 个最关键的问题；
+          - possibleCauses 只列最常见的 1 条，或设为 []，绝不编造；
+          - advice 照常给出安全的临时处理方式，seekCareWhen 保留危险信号。
+          连续使用 "inquiry_first" 最多 2 轮；第 3 轮必须给出评估，并在 summary 中说明哪些地方仍不确定。
      * 生成要求：
        1) summary：结合用户提供的所有细节，直接给出清晰、有深度的综合分析小结。
        2) possibleCauses（主角，置顶排第 1 位！）：列出 2～3 条具体重点排查方向（格式："1️⃣ **原因名称** — 核心依据与特征说明"）。
@@ -290,7 +305,7 @@ export function createGeminiHealthConsultation(options: {
           ? medicalQaSystemPrompt
           : input.mode === 'emergency'
             ? emergencySystemPrompt
-            : systemPrompt
+            : CONSULTATION_SYSTEM_PROMPT
 
     const languageRule =
       input.language === 'en'
@@ -331,7 +346,7 @@ The user's system language is strictly locked to English ('en').
             thinkingConfig: {
               thinkingLevel: ThinkingLevel.MINIMAL,
             },
-            maxOutputTokens: 1500,
+            maxOutputTokens: resolveMaxOutputTokens(process.env.GEMINI_MAX_OUTPUT_TOKENS),
           },
         }
         if (input.onSummaryDelta) {
