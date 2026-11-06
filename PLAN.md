@@ -367,7 +367,7 @@
 
 **验收重点**：摘要是在回答送出之后才生成的，不拖慢回答；超过 20 条后才会多调用 Gemini，而且每 10 条最多一次
 
-### [ ] 第 10 步｜语音输入（只改前端）
+### [x] 第 10 步｜语音输入（只改前端）
 
 **做法**：
 1. 新建 `src/types/speech.d.ts`：声明最少需要的 `SpeechRecognition` 类型（不加新套件）
@@ -463,8 +463,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 9 步已完成（新增 `consultation-backend/sql/002_case_memory.sql`；`conversationRepository.ts` 补充 `caseSummary` / `caseSummaryUpto` 状态字段与 `saveCaseSummary` 持久化接口，内存与 PG 仓储完整实现；`geminiHealthConsultation.ts` 抽象纯函数 `buildUserContent` 并支持注入 `[早前对话的病情摘要]`；`app.ts` 新增异步后台任务 `maybeUpdateCaseMemory`，在回答送出后无阻塞检查对话超 20 条且距上次摘要 $\ge 10$ 条触发英文记忆摘要生成，防重复并发，除 `direct_model` 外向模型注入 `caseMemory`。新增 `tests/caseMemory.test.ts` 4 个测试，覆盖 `buildUserContent` 纯函数判定、20 条内不调用、第 11 轮（22 条）提取前 2 条消息调用 1 次、第 12 轮携带 `caseMemory` 且不重复调用、后台出错不影响 200 响应。后端 18 个文件 85 个测试、前端 8 个文件 31 个测试全过、构建无报错）
-- **下一步**：第 10 步（语音输入，只改前端）
+- **当前进度**：第 10 步已完成（新建 `types/speech.d.ts` 声明 Web Speech API 接口；新建 `chat/useSpeechInput.ts` hook，支持 `zh-CN` / `en-US` 语种映射与流式中间转录；在 `ChatPanel.tsx` 输入框右侧增加麦克风按钮并在支持的浏览器上展示，录音时带有脉冲动效，出现 `not-allowed` 时提示权限引导，底部附有隐私说明小字；`i18n.ts` 补充对应中英文案。新增 `speechInput.test.tsx` 4 个测试，覆盖浏览器支持/不支持分支、语言配置、输入框文本填充与权限拒绝报错展示。前端 9 个测试套件 35 个用例全过、后端 18 个测试套件 85 个用例全过、两端构建 0 错误）
+- **下一步**：第 11a 步（马来语：后端）
 
 ## 6. 分工
 

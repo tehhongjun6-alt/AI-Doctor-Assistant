@@ -15,6 +15,7 @@ import {
 } from '../services/chatService'
 import { getConversation } from '../services/conversationService'
 import { AssistantMessage, Paragraphs, type ChatMessage } from './AssistantMessage'
+import { useSpeechInput } from './useSpeechInput'
 
 interface ChatPanelProps {
   initialConversationId?: string
@@ -29,7 +30,7 @@ interface ChatPanelProps {
 interface ChatError {
   message: string
   retry?: string
-  tone: 'error' | 'stopped'
+  tone: 'error' | 'stopped' | 'warning'
 }
 
 function timeNow(d = new Date()) {
@@ -72,6 +73,29 @@ export default function ChatPanel({
   const abortRef = useRef<AbortController | null>(null)
   const nearBottomRef = useRef(true)
   const forceScrollRef = useRef(false)
+  const baseTextRef = useRef('')
+
+  const speech = useSpeechInput({
+    lang,
+    onTranscript: (transcript) => {
+      const base = baseTextRef.current
+      const prefix = base
+        ? base.endsWith(' ') || base.endsWith('，')
+          ? base
+          : base + (lang === 'zh' ? '，' : ' ')
+        : ''
+      setInput(prefix + transcript)
+    },
+  })
+
+  useEffect(() => {
+    if (!speech.error) return
+    if (speech.error === 'not-allowed' || speech.error === 'service-not-allowed') {
+      setError({ message: t.micPermissionDenied, tone: 'warning' })
+    } else {
+      setError({ message: t.micError, tone: 'warning' })
+    }
+  }, [speech.error, t])
   // 本组件刚创建的对话 ID：父组件回传时不需要重新载入
   const createdIdRef = useRef<string | undefined>(undefined)
 
@@ -274,6 +298,8 @@ export default function ChatPanel({
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    baseTextRef.current = ''
+    speech.abort()
     if (isSending) {
       abortRef.current?.abort()
       return
@@ -410,8 +436,20 @@ export default function ChatPanel({
       <div className="chat-composer-wrap">
         <div className="chat-column">
           {(error || notice) && (
-            <div className={`chat-notice ${error?.tone === 'stopped' ? 'is-stopped' : ''}`} role={error ? 'alert' : 'status'}>
-              <Icon name={error?.tone === 'stopped' ? 'stop' : 'info'} size={18} />
+            <div
+              className={`chat-notice ${error?.tone === 'stopped' ? 'is-stopped' : error?.tone === 'warning' ? 'is-warning' : ''}`}
+              role={error ? 'alert' : 'status'}
+            >
+              <Icon
+                name={
+                  error?.tone === 'stopped'
+                    ? 'stop'
+                    : error?.tone === 'warning'
+                      ? 'alert'
+                      : 'info'
+                }
+                size={18}
+              />
               <span className="chat-notice-text">{error?.message ?? notice}</span>
               {error?.retry && (
                 <button
@@ -453,6 +491,25 @@ export default function ChatPanel({
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
             />
+            {speech.supported && (
+              <button
+                type="button"
+                className={`composer-btn composer-mic-btn ${speech.listening ? 'is-recording' : ''}`}
+                onClick={() => {
+                  if (speech.listening) {
+                    speech.stop()
+                  } else {
+                    baseTextRef.current = input
+                    speech.start()
+                  }
+                }}
+                disabled={isSending}
+                aria-label={speech.listening ? t.micStop : t.micStart}
+                title={speech.listening ? t.micStop : t.micStart}
+              >
+                <Icon name="mic" size={18} strokeWidth={2.2} />
+              </button>
+            )}
             {isSending ? (
               <button type="submit" className="composer-btn is-stop" aria-label={t.stopAria} title={t.stopAria}>
                 <Icon name="stop" size={16} strokeWidth={2.4} />
@@ -471,6 +528,9 @@ export default function ChatPanel({
           </form>
           <p className="composer-foot">
             <span className="composer-hint">{t.composerHint}</span>
+            {speech.supported && (
+              <span className="composer-mic-note">{t.micPrivacyNote}</span>
+            )}
             <span>{t.composerDisclaimer}</span>
           </p>
         </div>

@@ -842,6 +842,51 @@
   background: var(--ink-700);
 }
 
+.composer-mic-btn {
+  background: var(--surface-muted);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+
+.composer-mic-btn:hover:not(:disabled) {
+  background: var(--pink-100);
+  color: var(--berry-700);
+}
+
+.composer-mic-btn.is-recording {
+  background: var(--emergency);
+  color: var(--white);
+  border-color: var(--emergency);
+  animation: mic-pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes mic-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(212 53 28 / 0.5);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgb(212 53 28 / 0);
+    transform: scale(1.05);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(212 53 28 / 0);
+    transform: scale(1);
+  }
+}
+
+.composer-mic-note {
+  color: var(--color-text-tertiary);
+  font-size: var(--fs-12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-mic-btn.is-recording {
+    animation: none;
+  }
+}
+
 .composer-foot {
   display: flex;
   flex-wrap: wrap;
