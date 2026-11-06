@@ -8,6 +8,7 @@ import {
 import { ChatToolbar } from './chat/ChatToolbar'
 import ChatPanel from './chat/ChatPanel'
 import { Icon } from './components/Icon'
+import GuidePanel from './guide/GuidePanel'
 import { htmlLang, translations, type Language } from './i18n'
 import LandingPage from './landing/LandingPage'
 import AuthPage from './login/AuthPage'
@@ -331,6 +332,16 @@ export default function App() {
               />
             </Suspense>
           )}
+        </div>
+
+        <div className="ws-view" hidden={section !== 'guide'}>
+          <GuidePanel
+            lang={lang}
+            onOpenMenu={() => setDrawerOpen(true)}
+            onAsk={() => {
+              /* 第 4 步接上：填入问诊输入框 */
+            }}
+          />
         </div>
       </main>
     </div>

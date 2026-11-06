@@ -191,6 +191,24 @@ const zh = {
   dateLocale: 'zh-CN',
   distanceLabel: '距离',
   colon: '：',
+  // 健康指南
+  navGuide: '健康指南',
+  guideTitle: '健康指南',
+  guideIntro: '常见病的重点知识，看完还可以直接问 Medora。',
+  guideAll: '全部',
+  guideCatInfection: '传染病',
+  guideCatChronic: '慢性病',
+  guideCatEveryday: '日常不适',
+  guideCatEmergency: '认识急症',
+  guideWhatIs: '这是什么',
+  guideSymptoms: '常见症状',
+  guideCare: '怎么处理和预防',
+  guideSeeDoctor: '什么时候要立刻看医生',
+  guideSources: '来源',
+  guideReviewed: '最后审核',
+  guideAsk: '问 Medora',
+  guideClose: '关闭',
+  guideDisclaimer: '以上内容仅供健康教育参考，不能替代医生的诊断和治疗。',
 }
 
 const en: typeof zh = {
@@ -370,6 +388,24 @@ const en: typeof zh = {
   dateLocale: 'en-US',
   distanceLabel: 'Distance',
   colon: ': ',
+  // Health guide
+  navGuide: 'Health Guide',
+  guideTitle: 'Health Guide',
+  guideIntro: 'Key facts on common conditions. Have a question? Ask Medora.',
+  guideAll: 'All',
+  guideCatInfection: 'Infections',
+  guideCatChronic: 'Long-term conditions',
+  guideCatEveryday: 'Everyday ailments',
+  guideCatEmergency: 'Know the emergencies',
+  guideWhatIs: 'What it is',
+  guideSymptoms: 'Common symptoms',
+  guideCare: 'Care and prevention',
+  guideSeeDoctor: 'When to get help right away',
+  guideSources: 'Sources',
+  guideReviewed: 'Last reviewed',
+  guideAsk: 'Ask Medora',
+  guideClose: 'Close',
+  guideDisclaimer: 'This content is for health education only and does not replace diagnosis or treatment by a doctor.',
 }
 
 const ms: typeof zh = {
@@ -554,6 +590,24 @@ const ms: typeof zh = {
   dateLocale: 'ms-MY',
   distanceLabel: 'Jarak',
   colon: ': ',
+  // Panduan kesihatan
+  navGuide: 'Panduan Kesihatan',
+  guideTitle: 'Panduan Kesihatan',
+  guideIntro: 'Fakta penting tentang penyakit biasa. Ada soalan? Tanya Medora.',
+  guideAll: 'Semua',
+  guideCatInfection: 'Penyakit berjangkit',
+  guideCatChronic: 'Penyakit kronik',
+  guideCatEveryday: 'Masalah harian',
+  guideCatEmergency: 'Kenali kecemasan',
+  guideWhatIs: 'Apakah ini',
+  guideSymptoms: 'Gejala biasa',
+  guideCare: 'Rawatan dan pencegahan',
+  guideSeeDoctor: 'Bila perlu dapatkan bantuan segera',
+  guideSources: 'Sumber',
+  guideReviewed: 'Semakan terakhir',
+  guideAsk: 'Tanya Medora',
+  guideClose: 'Tutup',
+  guideDisclaimer: 'Kandungan ini untuk pendidikan kesihatan sahaja dan tidak menggantikan diagnosis atau rawatan doktor.',
 }
 
 export const translations = {

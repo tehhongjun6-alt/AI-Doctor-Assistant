@@ -5,7 +5,7 @@ import { Logo } from '../components/Logo'
 import type { Language, Translation } from '../i18n'
 import { DeleteAccountDialog } from './DeleteAccountDialog'
 
-export type Section = 'chat' | 'map'
+export type Section = 'chat' | 'map' | 'guide'
 
 interface SidebarProps {
   t: Translation
@@ -46,6 +46,7 @@ export function Sidebar({
   const items: { id: Section; icon: IconName; label: string }[] = [
     { id: 'chat', icon: 'chat', label: t.navChat },
     { id: 'map', icon: 'map', label: t.navMap },
+    { id: 'guide', icon: 'book', label: t.navGuide },
   ]
 
   function canHover() {

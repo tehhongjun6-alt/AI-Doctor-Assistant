@@ -1,0 +1,389 @@
+/* 健康指南：只用 tokens.css 的变量 */
+
+.guide-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.guide-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--topbar-h);
+  padding: 0 var(--space-6);
+  flex: none;
+}
+
+.guide-title {
+  margin: 0;
+  font-size: var(--fs-18);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-heading);
+}
+
+.guide-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.guide-inner {
+  max-width: 1080px;
+  padding: 0 var(--space-6) var(--space-10);
+}
+
+.guide-intro {
+  margin: 0 0 var(--space-5);
+  max-width: 60ch;
+  color: var(--color-text-secondary);
+  font-size: var(--fs-15);
+  line-height: var(--lh-snug);
+}
+
+/* ---------- 分类筛选 ---------- */
+.guide-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.guide-filter {
+  height: 36px;
+  padding: 0 var(--space-4);
+  border: var(--border-hairline);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+
+.guide-filter:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.guide-filter[aria-pressed='true'] {
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* ---------- 卡片墙：手机 2 栏、平板 3 栏、电脑 4 栏 ---------- */
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide-grid > li {
+  display: flex;
+}
+
+.guide-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-5);
+  border: var(--border-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  color: var(--color-text);
+  text-align: left;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-base) var(--ease-out);
+}
+
+.guide-card:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.guide-card-title {
+  flex: 1;
+  font-size: var(--fs-16);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-snug);
+}
+
+/* 分类小标签：浅底 + 正文色字，保证对比度（不用分类主色当文字） */
+.guide-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
+}
+
+.guide-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+}
+
+.guide-tag[data-category='infection'] { background: var(--guide-infection-bg); }
+.guide-tag[data-category='infection']::before { background: var(--guide-infection); }
+.guide-tag[data-category='chronic'] { background: var(--guide-chronic-bg); }
+.guide-tag[data-category='chronic']::before { background: var(--guide-chronic); }
+.guide-tag[data-category='everyday'] { background: var(--guide-everyday-bg); }
+.guide-tag[data-category='everyday']::before { background: var(--guide-everyday); }
+.guide-tag[data-category='emergency'] { background: var(--guide-emergency-bg); }
+.guide-tag[data-category='emergency']::before { background: var(--guide-emergency); }
+
+/* ---------- 图标 ---------- */
+.guide-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+}
+
+.guide-icon-glyph {
+  width: 32px;
+  height: 32px;
+  mask-size: contain;
+  -webkit-mask-size: contain;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-position: center;
+}
+
+.guide-icon--detail {
+  width: 64px;
+  height: 64px;
+}
+
+.guide-icon--detail .guide-icon-glyph {
+  width: 38px;
+  height: 38px;
+}
+
+.guide-disclaimer {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--fs-13);
+  line-height: var(--lh-snug);
+}
+
+.guide-page-disclaimer {
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: var(--border-hairline);
+}
+
+/* ---------- 详情对话框 ---------- */
+.guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: color-mix(in srgb, var(--ink-900) 36%, transparent);
+}
+
+.guide-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 600px;
+  max-height: min(860px, 100%);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.guide-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-6) var(--space-4);
+}
+
+.guide-dialog-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.guide-dialog-title {
+  margin: 0;
+  font-size: var(--fs-24);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-heading);
+  line-height: var(--lh-heading);
+}
+
+.guide-dialog-close {
+  align-self: flex-start;
+}
+
+.guide-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-6) var(--space-6);
+}
+
+.guide-block h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-15);
+  font-weight: var(--fw-bold);
+}
+
+.guide-block p,
+.guide-block ul {
+  margin: 0;
+  font-size: var(--fs-15);
+  line-height: var(--lh-body);
+}
+
+.guide-block ul {
+  padding-left: var(--space-5);
+}
+
+/* 什么时候要立刻看医生：急症色系 */
+.guide-urgent {
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--emergency-border);
+  border-radius: var(--radius-md);
+  background: var(--emergency-bg);
+}
+
+.guide-urgent h3 {
+  color: var(--emergency-hover);
+}
+
+.guide-meta h3 {
+  color: var(--color-text-secondary);
+  font-size: var(--fs-13);
+}
+
+.guide-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  padding-left: 0 !important;
+  list-style: none;
+}
+
+.guide-sources a {
+  color: var(--color-accent-text);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-semibold);
+}
+
+.guide-reviewed {
+  margin-top: var(--space-2) !important;
+  color: var(--color-text-secondary);
+  font-size: var(--fs-13) !important;
+}
+
+.guide-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-4) var(--space-6);
+  border-top: var(--border-hairline);
+}
+
+.guide-ask {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 44px;
+  padding: 0 var(--space-5);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: var(--fs-15);
+  font-weight: var(--fw-semibold);
+  transition: background-color var(--dur-fast) ease;
+}
+
+.guide-ask:hover {
+  background: var(--color-primary-hover);
+}
+
+/* ---------- 平板 ---------- */
+@media (max-width: 1023px) {
+  .guide-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ---------- 手机：2 栏、详情全屏 ---------- */
+@media (max-width: 767px) {
+  .guide-toolbar {
+    padding: 0 var(--space-3);
+  }
+
+  .guide-inner {
+    padding: 0 var(--space-4) var(--space-8);
+  }
+
+  .guide-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+
+  .guide-card {
+    padding: var(--space-4);
+  }
+
+  .guide-overlay {
+    padding: 0;
+  }
+
+  .guide-dialog {
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .guide-dialog-head {
+    padding: var(--space-4) var(--space-4) var(--space-3);
+  }
+
+  .guide-dialog-body {
+    padding: var(--space-2) var(--space-4) var(--space-5);
+  }
+
+  .guide-dialog-foot {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .guide-ask {
+    width: 100%;
+    justify-content: center;
+  }
+}
