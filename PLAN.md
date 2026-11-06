@@ -82,7 +82,7 @@
 
 ## 4. 分步计划
 
-### [ ] 第 1 步｜图标和分类颜色（只改前端）
+### [x] 第 1 步｜图标和分类颜色（只改前端）
 
 **做法**：
 1. 到 [healthicons.org](https://healthicons.org/) 按第 2 节的表格，替 20 个主题各挑一个 **outline（线条）风格、24px** 的图标，下载 SVG，存成 `src/guide/icons/<id>.svg`（例如 `dengue.svg`）
@@ -106,6 +106,13 @@
 - 前端 `npm test` 全部通过，`npm run build` 没有错误
 
 **验收重点**：图标确实来自 Health Icons（README 有记录）；没有用蓝紫色；tokens.css 只新增、没有改动现有变量
+
+**实际做法（2026-11-06，待验收）**：
+- 20 个图标全部取自官方仓库 `public/icons/svg/outline-24px/`，原样下载；实际名称见 `src/guide/icons/README.md`。和建议不同的：哮喘用 `body/lungs`（24px 没有吸入器）、湿疹用 `conditions/allergies`（24px 没有 Dermatology）、中风用 `body/neurology`、高胆固醇用 `body/blood-drop`、手足口病用 `people/boy-0105y`
+- 授权：已读官方 LICENSE，`public/icons` 的 SVG 为 CC0 1.0
+- `tokens.css` 在「地图机构类型」后面只新增 8 个 `--guide-*` 变量，数值完全照计划
+- 测试：`src/guide/icons.test.ts`（2 个测试）；`npm test` 11 个文件 39 个测试全过；`npm run build` 成功（只有原本就有的 chunk 超过 500 kB 提醒）
+- ⚠️ 已知事项（用户同意先照计划做）：传染病主色在浅底上对比度 4.37:1、急症 4.36:1，低于 4.5:1；当图标用（3:1 标准）没问题，第 3 步分类小标签不要用「主色字 + 浅底」
 
 ### [ ] 第 2 步｜20 张卡片的内容（只改前端）
 
@@ -222,8 +229,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：规划已确认，还没开始写代码
-- **下一步**：第 1 步（图标和分类颜色）
+- **当前进度**：第 1 步已完成，等待验收（还没提交）
+- **下一步**：第 1 步验收通过并提交后，做第 2 步（20 张卡片的内容）
 
 ## 6. 分工
 

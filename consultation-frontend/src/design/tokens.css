@@ -67,6 +67,16 @@
   --place-pharmacy: #2e7d6b;
   --place-user: #2563eb;
 
+  /* 健康指南分类（不用蓝紫色） */
+  --guide-infection: #2e7d6b;
+  --guide-infection-bg: #e8f4f1;
+  --guide-chronic: var(--berry-700);
+  --guide-chronic-bg: var(--pink-50);
+  --guide-everyday: #8a5a00;
+  --guide-everyday-bg: #fdf4e1;
+  --guide-emergency: var(--emergency);
+  --guide-emergency-bg: var(--emergency-bg);
+
   /* ---------- 字体 ---------- */
   --font-sans: "Figtree", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
     "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
