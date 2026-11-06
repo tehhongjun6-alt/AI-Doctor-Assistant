@@ -15,6 +15,11 @@ import {
 } from './auth/userRepository.js'
 import { routeMedicalDataRequest } from './routing/medicalDataRouter.js'
 import {
+  createCaseSummarizer,
+  type CaseSummary,
+  type SummarizeCaseInput,
+} from './services/caseSummary.js'
+import {
   buildEmergencyStructuredAnswer,
   checkEmergencyRisk,
   EMERGENCY_ACTION_TEXT,
@@ -56,6 +61,7 @@ type GenerateHealthAnswer = (
 ) => ReturnType<typeof generateGeminiHealthAnswer>
 type RetrieveMedicalData = (input: MedicalDataRequest) => Promise<MedicalDataResult>
 type RouteMedicalData = typeof routeMedicalDataRequest
+type SummarizeCase = (input: SummarizeCaseInput) => Promise<CaseSummary>
 
 interface AppDependencies {
   searchHospitals?: SearchHospitals
@@ -65,6 +71,7 @@ interface AppDependencies {
   userRepository?: UserRepository
   routeMedicalData?: RouteMedicalData
   chatRateLimiter?: RequestRateLimiter
+  summarizeCase?: SummarizeCase
 }
 
 function isValidNumber(value: unknown): value is number {
@@ -146,6 +153,8 @@ export function createApp(dependencies: AppDependencies = {}) {
     dependencies.routeMedicalData ?? routeMedicalDataRequest
   const chatRateLimiter =
     dependencies.chatRateLimiter ?? new RequestRateLimiter()
+  const summarizeCase =
+    dependencies.summarizeCase ?? createCaseSummarizer()
   const frontendOriginsEnv = process.env.FRONTEND_ORIGINS?.trim()
 
   let lastDeleteExpiredAt = 0
@@ -376,6 +385,95 @@ export function createApp(dependencies: AppDependencies = {}) {
         response.status(500).json({
           success: false,
           error: { code: 'SERVER_ERROR', message: '删除对话失败。' },
+        })
+      }
+    },
+  )
+
+  // -------------------------------------------------------------------------
+  // Visit Summary API (Step 8)
+  // -------------------------------------------------------------------------
+  app.post(
+    '/api/conversations/:id/visit-summary',
+    requireAuth,
+    async (request: AuthenticatedRequest, response) => {
+      const userId = request.user?.sub
+      if (!userId) {
+        response.status(401).json({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: '登录已过期，请重新登录。' },
+        })
+        return
+      }
+
+      const id = String(request.params.id)
+      const conversation = await conversationRepository.get(id, userId)
+      if (!conversation) {
+        response.status(404).json({
+          success: false,
+          error: {
+            code: 'CONVERSATION_NOT_FOUND',
+            message: '对话不存在或已过期。',
+          },
+        })
+        return
+      }
+
+      const messages = await conversationRepository.getMessages(id, userId)
+      const hasUserMessage = messages?.some((m) => m.role === 'user')
+      if (!hasUserMessage) {
+        response.status(409).json({
+          success: false,
+          error: {
+            code: 'NOTHING_TO_SUMMARIZE',
+            message: '没有可以生成就诊摘要的内容。',
+          },
+        })
+        return
+      }
+
+      const retryAfter = chatRateLimiter.consume(userId)
+      if (retryAfter > 0) {
+        response.setHeader('Retry-After', String(retryAfter))
+        response.status(429).json({
+          success: false,
+          error: {
+            code: 'RATE_LIMITED',
+            message: `请求太频繁，请 ${retryAfter} 秒后再试。`,
+            retryAfter,
+          },
+        })
+        return
+      }
+
+      const language = request.body?.language === 'en' ? 'en' : 'zh'
+      const inputMessages = (messages ?? []).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }))
+
+      try {
+        const summary = await summarizeCase({
+          messages: inputMessages,
+          language,
+          purpose: 'visit',
+        })
+
+        response.status(200).json({
+          success: true,
+          data: {
+            summary,
+            generatedAt: new Date().toISOString(),
+          },
+        })
+      } catch (error) {
+        console.error('Visit summary generation failed', error)
+        response.status(502).json({
+          success: false,
+          error: {
+            code: 'AI_MODEL_UNAVAILABLE',
+            message: 'AI 服务暂时无法使用，未能生成就诊摘要。',
+          },
         })
       }
     },

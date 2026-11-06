@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Logo } from '../components/Logo'
-import type { Translation } from '../i18n'
+import type { Language, Translation } from '../i18n'
 import type { ConversationItem } from '../services/conversationService'
+import { VisitSummaryDialog } from './VisitSummaryDialog'
 
 interface ChatToolbarProps {
   t: Translation
   conversations: ConversationItem[]
   limit: number
   activeId?: string
+  canSummarize?: boolean
+  lang?: Language
   onSelect: (id: string) => void
   onDelete: (id: string) => void
   onNew: () => void
@@ -29,18 +32,21 @@ function formatTime(dateStr?: string): string {
   return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`
 }
 
-/** Chat 顶部工具区：历史对话（最多 3 个）+ 新对话 */
+/** Chat 顶部工具区：历史对话（最多 3 个）+ 就诊摘要 + 新对话 */
 export function ChatToolbar({
   t,
   conversations,
   limit,
   activeId,
+  canSummarize = false,
+  lang = 'zh',
   onSelect,
   onDelete,
   onNew,
   onOpenMenu,
 }: ChatToolbarProps) {
   const [open, setOpen] = useState(false)
+  const [summaryOpen, setSummaryOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const isFull = conversations.length >= limit
   const activeTitle = conversations.find((c) => c.id === activeId)?.title
@@ -150,16 +156,39 @@ export function ChatToolbar({
         </section>
       </div>
 
-      <button
-        type="button"
-        className={`btn btn-secondary btn-sm chat-new ${isFull ? 'is-full' : ''}`}
-        disabled={isFull}
-        onClick={onNew}
-        title={isFull ? t.conversationLimitReachedNotice : undefined}
-      >
-        <Icon name="plus" size={17} />
-        <span className="chat-new-label">{isFull ? t.conversationLimitBtn : t.newConversationBtn}</span>
-      </button>
+      <div className="chat-toolbar-actions">
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm chat-summary-btn"
+          disabled={!activeId || !canSummarize}
+          onClick={() => setSummaryOpen(true)}
+          title={t.visitSummary}
+        >
+          <Icon name="stethoscope" size={17} />
+          <span className="chat-summary-label">{t.visitSummary}</span>
+        </button>
+
+        <button
+          type="button"
+          className={`btn btn-secondary btn-sm chat-new ${isFull ? 'is-full' : ''}`}
+          disabled={isFull}
+          onClick={onNew}
+          title={isFull ? t.conversationLimitReachedNotice : undefined}
+        >
+          <Icon name="plus" size={17} />
+          <span className="chat-new-label">{isFull ? t.conversationLimitBtn : t.newConversationBtn}</span>
+        </button>
+      </div>
+
+      {summaryOpen && activeId && (
+        <VisitSummaryDialog
+          conversationId={activeId}
+          lang={lang}
+          t={t}
+          isOpen={summaryOpen}
+          onClose={() => setSummaryOpen(false)}
+        />
+      )}
     </header>
   )
 }

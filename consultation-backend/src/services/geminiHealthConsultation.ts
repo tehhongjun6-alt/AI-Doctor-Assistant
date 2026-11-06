@@ -224,13 +224,13 @@ function isTimeoutError(error: unknown) {
   )
 }
 
-const fallbackModels = [
+export const fallbackModels = [
   'gemini-3.5-flash-lite',
   'gemini-flash-lite-latest',
   'gemini-3.6-flash',
 ]
 
-function isRetriableModelError(error: unknown) {
+export function isRetriableModelError(error: unknown) {
   if (!(error instanceof Error)) {
     return false
   }

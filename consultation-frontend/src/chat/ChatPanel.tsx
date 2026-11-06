@@ -21,6 +21,7 @@ interface ChatPanelProps {
   onConversationCreated?: (id: string) => void
   onConversationMissing?: () => void
   onListChanged?: () => void
+  onCanSummarizeChange?: (can: boolean) => void
   onOpenMap: (careLevel: CareLevel) => void
   lang: Language
 }
@@ -46,11 +47,17 @@ export default function ChatPanel({
   onConversationCreated,
   onConversationMissing,
   onListChanged,
+  onCanSummarizeChange,
   onOpenMap,
   lang,
 }: ChatPanelProps) {
   const t = translations[lang]
   const [messages, setMessages] = useState<ChatMessage[]>([])
+
+  useEffect(() => {
+    const hasUser = messages.some((m) => m.role === 'user')
+    onCanSummarizeChange?.(hasUser)
+  }, [messages, onCanSummarizeChange])
   const [input, setInput] = useState('')
   const [conversationId, setConversationId] = useState(initialConversationId)
   const [isSending, setIsSending] = useState(false)

@@ -86,6 +86,7 @@ export default function App() {
   const [conversations, setConversations] = useState<ConversationItem[]>([])
   const [limit, setLimit] = useState(3)
   const [activeConversationId, setActiveConversationId] = useState<string>()
+  const [chatHasUserMessages, setChatHasUserMessages] = useState(false)
   const [chatKey, setChatKey] = useState(0)
 
   const online = useOnline()
@@ -168,6 +169,7 @@ export default function App() {
     setHasOpenedMap(false)
     setConversations([])
     setActiveConversationId(undefined)
+    setChatHasUserMessages(false)
     setPublicView({ name: 'landing' })
     setHash('')
   }
@@ -190,12 +192,14 @@ export default function App() {
   function startNewChat() {
     if (conversations.length >= limit) return
     setActiveConversationId(undefined)
+    setChatHasUserMessages(false)
     setChatKey((k) => k + 1)
     setSection('chat')
   }
 
   function selectConversation(id: string) {
     setActiveConversationId(id)
+    setChatHasUserMessages(false)
     setChatKey((k) => k + 1)
     setSection('chat')
   }
@@ -278,6 +282,12 @@ export default function App() {
             conversations={conversations}
             limit={limit}
             activeId={activeConversationId}
+            canSummarize={Boolean(
+              activeConversationId &&
+                (chatHasUserMessages ||
+                  (conversations.find((c) => c.id === activeConversationId)?.messageCount ?? 0) > 0)
+            )}
+            lang={lang}
             onSelect={selectConversation}
             onDelete={(id) => void handleDeleteConversation(id)}
             onNew={startNewChat}
@@ -292,6 +302,7 @@ export default function App() {
               void refreshConversations()
             }}
             onListChanged={() => void refreshConversations()}
+            onCanSummarizeChange={(can) => setChatHasUserMessages(can)}
             onOpenMap={openMapFromChat}
             lang={lang}
           />

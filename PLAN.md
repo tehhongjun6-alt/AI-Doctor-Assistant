@@ -268,7 +268,7 @@
 
 **验收重点**：PG 的 `delete` 一定带 `where id = $1`；密码错误时**绝对不能**删除任何东西
 
-### [ ] 第 8 步｜就诊摘要（两边都改）
+### [x] 第 8 步｜就诊摘要（两边都改）
 
 **做法（后端）**：
 1. `geminiHealthConsultation.ts`：把 `fallbackModels` 和 `isRetriableModelError` 改成 `export`，供下面共用
@@ -463,8 +463,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 7 步已完成（后端 `auth/userRepository.ts` 补充 `deleteById`、`conversationRepository.ts` 补充 `deleteAllForUser`、`app.ts` 新增 `DELETE /api/account` 路由，强制密码比对、限制失败重试、密码正确后依次级联删除用户对话与账号；前端 `Sidebar.tsx` 新增危险色「删除账号」按钮，配合 `DeleteAccountDialog.tsx` 弹窗确认，密码空时禁用确认按钮，401/429 对应展示错误，204 自动清除本地凭证并返回首页。新增 `tests/account.test.ts` 与 `src/workspace/deleteAccount.test.tsx`，后端 72 个测试、前端 28 个测试全过、构建无报错）
-- **下一步**：第 8 步（就诊摘要）
+- **当前进度**：第 8 步已完成（后端 `services/caseSummary.ts` 定义 `CaseSummary` 与结构化校验守卫 `isCaseSummary`，提示词规定严禁推测、按指定语言输出；`app.ts` 新增 `POST /api/conversations/:id/visit-summary` 路由，校验对话归属、检查用户消息、速率限制并直接调用 `summarizeCase` 返回随需生成的结构化摘要，不持久化至数据库；前端新增 `visitSummaryService.ts`、`VisitSummaryDialog.tsx`，支持逐项依序展示非空健康区块、顶部 AI 免责声明、底部生成时间、一键复制纯文本与 `window.print()` 专属打印样式；`ChatToolbar.tsx` 增加「就诊摘要」按钮，由 `ChatPanel` 实时判断有用户消息时激活。新增 `tests/caseSummary.test.ts`、`tests/visitSummary.test.ts`、`src/chat/visitSummary.test.tsx`，后端 17 个文件 81 个测试、前端 8 个文件 31 个测试全过、两端构建 0 错误）
+- **下一步**：第 9 步（病情摘要记忆，只改后端含 SQL）
 
 ## 6. 分工
 

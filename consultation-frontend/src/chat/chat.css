@@ -208,14 +208,27 @@
   color: var(--color-text-tertiary);
 }
 
-.chat-new {
+.chat-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin-left: auto;
+}
+
+.chat-new {
+  margin-left: 0;
 }
 
 .chat-new.is-full:disabled {
   background: var(--surface-muted);
   border-color: transparent;
   color: var(--color-text-secondary);
+}
+
+.chat-summary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 /* ---------- 对话主体 ---------- */
@@ -924,5 +937,256 @@
 
   .chat-jump {
     bottom: 140px;
+  }
+}
+
+/* ---------- 就诊摘要弹窗 ---------- */
+.visit-summary-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay, 40);
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgb(0 0 0 / 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.visit-summary-modal {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.visit-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  flex: none;
+}
+
+.visit-summary-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.visit-summary-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--pink-50);
+  color: var(--berry-700);
+}
+
+.visit-summary-title {
+  margin: 0;
+  font-size: var(--fs-18);
+  font-weight: var(--fw-bold);
+  color: var(--color-text);
+}
+
+.visit-summary-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.visit-summary-print-header {
+  display: none;
+}
+
+.visit-summary-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-12) 0;
+  color: var(--color-text-secondary);
+}
+
+.visit-summary-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--emergency-bg);
+  color: var(--emergency);
+  font-size: var(--fs-14);
+}
+
+.visit-summary-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--ink-700);
+  font-size: var(--fs-13);
+  line-height: var(--lh-snug);
+}
+
+.visit-summary-disclaimer svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--berry-700);
+}
+
+.visit-summary-empty {
+  margin: var(--space-6) 0;
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: var(--fs-14);
+}
+
+.visit-summary-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.visit-summary-section {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  border: 1px solid var(--color-border);
+}
+
+.visit-summary-section h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-semibold);
+  color: var(--berry-700);
+}
+
+.visit-summary-section p {
+  margin: 0;
+  font-size: var(--fs-14);
+  line-height: var(--lh-body);
+  color: var(--color-text);
+}
+
+.visit-summary-section ul {
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--fs-14);
+  line-height: var(--lh-body);
+  color: var(--color-text);
+}
+
+.visit-summary-section li {
+  margin-bottom: var(--space-1);
+}
+
+.visit-summary-section.visit-summary-red-flags {
+  background: var(--emergency-bg);
+  border-color: var(--emergency-border);
+}
+
+.visit-summary-section.visit-summary-red-flags h3 {
+  color: var(--emergency);
+}
+
+.visit-summary-meta {
+  margin-top: var(--space-2);
+  font-size: var(--fs-12);
+  color: var(--color-text-tertiary);
+  text-align: right;
+}
+
+.visit-summary-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--color-border);
+  background: var(--surface-subtle);
+  flex: none;
+}
+
+.visit-summary-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* ---------- 打印样式：只打印就诊摘要内容 ---------- */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .visit-summary-print-area,
+  .visit-summary-print-area * {
+    visibility: visible;
+  }
+
+  .visit-summary-overlay {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    backdrop-filter: none !important;
+  }
+
+  .visit-summary-modal {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+  }
+
+  .visit-summary-body {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .visit-summary-print-header {
+    display: block !important;
+    margin-bottom: var(--space-4) !important;
+  }
+
+  .visit-summary-print-header h2 {
+    margin: 0;
+    font-size: var(--fs-24);
+    color: var(--ink-900);
+  }
+
+  .visit-summary-no-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  .visit-summary-section {
+    break-inside: avoid;
+    border: 1px solid var(--line-strong) !important;
+    background: var(--surface-subtle) !important;
+    color: var(--ink-900) !important;
   }
 }
