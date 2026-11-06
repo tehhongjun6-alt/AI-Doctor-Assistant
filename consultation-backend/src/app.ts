@@ -543,7 +543,7 @@ export function createApp(dependencies: AppDependencies = {}) {
         }
 
         let rawAnswer: unknown
-        let sources: Array<{ title: string; url: string }> = []
+        let sources: Array<{ title: string; url: string; provider?: string }> = []
         let medicalData: MedicalDataResult | undefined
         let fallbackTriggeredReason: string | undefined
 
@@ -589,7 +589,7 @@ export function createApp(dependencies: AppDependencies = {}) {
                 return true
               })
               .slice(0, 5)
-              .map((item) => ({ title: item.title, url: item.url }))
+              .map((item) => ({ title: item.title, url: item.url, provider: item.provider }))
           }
         } catch (modelError) {
           if (

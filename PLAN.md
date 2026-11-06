@@ -180,7 +180,7 @@
 
 **验收重点**：急症回答复制出来的文字一定有 999；【你做】用手机试一次分享到 WhatsApp
 
-### [ ] 第 5 步｜参考资料显示来源机构（两边都改，小）
+### [x] 第 5 步｜参考资料显示来源机构（两边都改，小）
 
 **问题**：回答下方已经有参考资料清单（`AssistantMessage.tsx` 约第 177–190 行），但只显示文章标题，用户看不出来是 NHS 还是 MedlinePlus
 
@@ -463,8 +463,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 4 步已完成（实现 `formatAnswerAsText` 纯文本格式化并去除 Markdown 星号、急症置顶 999 警示与末尾署名，在 `AssistantMessage.tsx` 增加复制与分享按钮行及已复制状态，`Icon.tsx` 补充 copy/share 图标，`i18n.ts` 补充文案，新增 `answerText.test.ts` 与 `answerActions.test.tsx`，前端 21 个测试全过、构建无报错）
-- **下一步**：第 5 步（参考资料显示来源机构）
+- **当前进度**：第 5 步已完成（后端 `app.ts` 与存储库类型支持 `provider?: string`，前端 `Source` 接口同步补充并在 `AssistantMessage.tsx` 中映射展示机构标签如 NHS/MedlinePlus，兼容旧对话无标签数据，新增 `sources.test.ts` 与 `sources.test.tsx`，后端 61 个测试、前端 24 个测试全过、构建无报错）
+- **下一步**：第 6 步（重新回答）
 
 ## 6. 分工
 

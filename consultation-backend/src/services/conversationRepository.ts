@@ -52,7 +52,7 @@ export interface ConversationMessageRecord {
   role: 'user' | 'assistant'
   content: string
   answer?: ChatAnswer | null
-  sources?: Array<{ title: string; url: string }> | null
+  sources?: Array<{ title: string; url: string; provider?: string }> | null
   isEmergency: boolean
   mapCareLevel?: 'hospital' | 'clinic' | null
   useForContext: boolean
@@ -72,7 +72,7 @@ export interface AppendTurnInput extends StateTransitionInput {
   userId: string
   assistantAnswer: ChatAnswer
   assistantContent?: string
-  sources?: Array<{ title: string; url: string }> | null
+  sources?: Array<{ title: string; url: string; provider?: string }> | null
   isEmergency?: boolean
   mapCareLevel?: 'hospital' | 'clinic' | null
   useForContext?: boolean
@@ -375,7 +375,7 @@ interface MessageRow {
   role: 'user' | 'assistant'
   content: string
   answer: ChatAnswer | null
-  sources: Array<{ title: string; url: string }> | null
+  sources: Array<{ title: string; url: string; provider?: string }> | null
   is_emergency: boolean
   map_care_level: 'hospital' | 'clinic' | null
   use_for_context: boolean

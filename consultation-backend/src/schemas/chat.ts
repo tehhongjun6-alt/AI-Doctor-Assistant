@@ -35,6 +35,7 @@ export interface ChatAnswer {
 export interface ChatSource {
   title: string
   url: string
+  provider?: string
   publishedAt?: string
 }
 

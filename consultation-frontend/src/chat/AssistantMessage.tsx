@@ -80,6 +80,15 @@ const URGENCY_ICON: Record<'low' | 'medium' | 'high', IconName> = {
   high: 'alert',
 }
 
+export const PROVIDER_LABELS: Record<string, string> = {
+  medlineplus: 'MedlinePlus',
+  openfda: 'OpenFDA',
+  rxnorm: 'RxNorm',
+  kkmnow: 'KKMNow',
+  nhs: 'NHS',
+  icd11: 'WHO ICD-11',
+}
+
 interface AssistantMessageProps {
   message: ChatMessage
   t: Translation
@@ -220,14 +229,20 @@ export function AssistantMessage({ message, t, displayContent, onOpenMap }: Assi
             {t.sourcesTitle}
           </span>
           <ul>
-            {message.sources.map((source) => (
-              <li key={source.url}>
-                <a href={source.url} target="_blank" rel="noopener noreferrer" title={source.title}>
-                  <span className="ai-source-title">{source.title}</span>
-                  <span className="ai-source-host">{safeHostname(source.url)}</span>
-                </a>
-              </li>
-            ))}
+            {message.sources.map((source) => {
+              const providerLabel = source.provider
+                ? PROVIDER_LABELS[source.provider] ?? source.provider
+                : null
+              return (
+                <li key={source.url}>
+                  <a href={source.url} target="_blank" rel="noopener noreferrer" title={source.title}>
+                    {providerLabel && <span className="ai-source-provider">{providerLabel}</span>}
+                    <span className="ai-source-title">{source.title}</span>
+                    <span className="ai-source-host">{safeHostname(source.url)}</span>
+                  </a>
+                </li>
+              )
+            })}
           </ul>
         </div>
       )}

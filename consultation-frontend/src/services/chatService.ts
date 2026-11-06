@@ -19,6 +19,7 @@ export interface HealthAnswer {
 export interface Source {
   title: string
   url: string
+  provider?: string
 }
 
 export interface ChatApiResponse {

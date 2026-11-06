@@ -567,6 +567,19 @@
   background: var(--surface-subtle);
 }
 
+.ai-source-provider {
+  align-self: flex-start;
+  display: inline-block;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--surface-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--fs-11);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  margin-bottom: var(--space-1);
+}
+
 .ai-source-title {
   overflow: hidden;
   text-overflow: ellipsis;
