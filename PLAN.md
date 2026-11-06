@@ -330,7 +330,7 @@
 
 **验收重点**：提示词有「不得推测」的规定；摘要没有存进数据库；打印时只印出摘要；【你做】实际生成一次，看看内容是否忠于对话
 
-### [ ] 第 9 步｜病情摘要记忆（只改后端，含 SQL）
+### [x] 第 9 步｜病情摘要记忆（只改后端，含 SQL）
 
 **做法**：
 1. 新增 `consultation-backend/sql/002_case_memory.sql`：
@@ -463,8 +463,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 8 步已完成（后端 `services/caseSummary.ts` 定义 `CaseSummary` 与结构化校验守卫 `isCaseSummary`，提示词规定严禁推测、按指定语言输出；`app.ts` 新增 `POST /api/conversations/:id/visit-summary` 路由，校验对话归属、检查用户消息、速率限制并直接调用 `summarizeCase` 返回随需生成的结构化摘要，不持久化至数据库；前端新增 `visitSummaryService.ts`、`VisitSummaryDialog.tsx`，支持逐项依序展示非空健康区块、顶部 AI 免责声明、底部生成时间、一键复制纯文本与 `window.print()` 专属打印样式；`ChatToolbar.tsx` 增加「就诊摘要」按钮，由 `ChatPanel` 实时判断有用户消息时激活。新增 `tests/caseSummary.test.ts`、`tests/visitSummary.test.ts`、`src/chat/visitSummary.test.tsx`，后端 17 个文件 81 个测试、前端 8 个文件 31 个测试全过、两端构建 0 错误）
-- **下一步**：第 9 步（病情摘要记忆，只改后端含 SQL）
+- **当前进度**：第 9 步已完成（新增 `consultation-backend/sql/002_case_memory.sql`；`conversationRepository.ts` 补充 `caseSummary` / `caseSummaryUpto` 状态字段与 `saveCaseSummary` 持久化接口，内存与 PG 仓储完整实现；`geminiHealthConsultation.ts` 抽象纯函数 `buildUserContent` 并支持注入 `[早前对话的病情摘要]`；`app.ts` 新增异步后台任务 `maybeUpdateCaseMemory`，在回答送出后无阻塞检查对话超 20 条且距上次摘要 $\ge 10$ 条触发英文记忆摘要生成，防重复并发，除 `direct_model` 外向模型注入 `caseMemory`。新增 `tests/caseMemory.test.ts` 4 个测试，覆盖 `buildUserContent` 纯函数判定、20 条内不调用、第 11 轮（22 条）提取前 2 条消息调用 1 次、第 12 轮携带 `caseMemory` 且不重复调用、后台出错不影响 200 响应。后端 18 个文件 85 个测试、前端 8 个文件 31 个测试全过、构建无报错）
+- **下一步**：第 10 步（语音输入，只改前端）
 
 ## 6. 分工
 

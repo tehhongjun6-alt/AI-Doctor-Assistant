@@ -1,6 +1,7 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import { extractPartialSummary } from './partialSummary.js'
 import type { ChatAnswer, ChatHistoryMessage } from '../schemas/chat.js'
+import type { CaseSummary } from './caseSummary.js'
 import type { MedicalEvidence } from './medicalData/medicalDataTypes.js'
 
 export type ModelServiceErrorCode =
@@ -31,6 +32,7 @@ export interface HealthConsultationInput {
     category?: string
     reason?: string
   }
+  caseMemory?: CaseSummary
   /** 提供时改用流式生成：每当 summary 有新内容就回调当前完整的 summary 文本 */
   onSummaryDelta?: (summarySoFar: string) => void
 }
@@ -242,6 +244,63 @@ export function isRetriableModelError(error: unknown) {
   )
 }
 
+export function buildUserContent(input: HealthConsultationInput): string {
+  const emergencyHint =
+    input.mode === 'emergency' && input.emergencyContext
+      ? `\n\n[系统急症分诊上下文：类别=${input.emergencyContext.category ?? 'emergency'}，原因=${input.emergencyContext.reason ?? '危急医疗情况'}。请结合历史对话判断这是首轮触发还是后续跟进，切勿机械复读上一轮文字。]`
+      : ''
+
+  let caseMemoryBlock = ''
+  if (input.caseMemory) {
+    const mem = input.caseMemory
+    const parts: string[] = []
+    if (mem.chiefComplaint?.trim()) {
+      parts.push(`主要问题：${mem.chiefComplaint.trim()}`)
+    }
+    if (mem.duration?.trim()) {
+      parts.push(`持续时间：${mem.duration.trim()}`)
+    }
+    if (mem.symptoms && mem.symptoms.length > 0) {
+      parts.push(`具体症状：${mem.symptoms.join('、')}`)
+    }
+    if (mem.medications && mem.medications.length > 0) {
+      parts.push(`用过的药：${mem.medications.join('、')}`)
+    }
+    if (mem.allergies && mem.allergies.length > 0) {
+      parts.push(`过敏史：${mem.allergies.join('、')}`)
+    }
+    if (mem.relevantHistory && mem.relevantHistory.length > 0) {
+      parts.push(`相关病史：${mem.relevantHistory.join('、')}`)
+    }
+    if (mem.aiAssessment && mem.aiAssessment.length > 0) {
+      parts.push(`AI 曾给出的可能方向：${mem.aiAssessment.join('、')}`)
+    }
+    if (mem.redFlags && mem.redFlags.length > 0) {
+      parts.push(`危险信号：${mem.redFlags.join('、')}`)
+    }
+    if (mem.questionsForDoctor && mem.questionsForDoctor.length > 0) {
+      parts.push(`建议向医生咨询的问题：${mem.questionsForDoctor.join('、')}`)
+    }
+
+    if (parts.length > 0) {
+      caseMemoryBlock = `\n\n[早前对话的病情摘要（超出最近 20 条的内容）]\n${parts.join('\n')}`
+    } else {
+      caseMemoryBlock = `\n\n[早前对话的病情摘要（超出最近 20 条的内容）]`
+    }
+  }
+
+  const evidenceText = input.evidence?.length
+    ? `\n\n参考医学资料（若与用户情况相关请结合参考；若为不相关的罕见病或仅含注册批号，请忽略并结合临床医学常识回答）：\n${input.evidence
+        .map(
+          (item, index) =>
+            `[${index + 1}] ${item.title}\n来源：${item.provider}\n链接：${item.url}\n内容：${item.summary}`,
+        )
+        .join('\n\n')}`
+    : ''
+
+  return `${input.message}${emergencyHint}${caseMemoryBlock}${evidenceText}`
+}
+
 export function createGeminiHealthConsultation(options: {
   apiKey?: string
   model?: string
@@ -284,20 +343,6 @@ export function createGeminiHealthConsultation(options: {
     })
 
     let response
-    const evidenceText = input.evidence?.length
-      ? `\n\n参考医学资料（若与用户情况相关请结合参考；若为不相关的罕见病或仅含注册批号，请忽略并结合临床医学常识回答）：\n${input.evidence
-          .map(
-            (item, index) =>
-              `[${index + 1}] ${item.title}\n来源：${item.provider}\n链接：${item.url}\n内容：${item.summary}`,
-          )
-          .join('\n\n')}`
-      : ''
-
-    const emergencyHint =
-      input.mode === 'emergency' && input.emergencyContext
-        ? `\n\n[系统急症分诊上下文：类别=${input.emergencyContext.category ?? 'emergency'}，原因=${input.emergencyContext.reason ?? '危急医疗情况'}。请结合历史对话判断这是首轮触发还是后续跟进，切勿机械复读上一轮文字。]`
-        : ''
-
     const baseInstruction =
       input.mode === 'direct_model'
         ? directModelSystemPrompt
@@ -336,7 +381,7 @@ The user's system language is strictly locked to English ('en').
             })),
             {
               role: 'user',
-              parts: [{ text: `${input.message}${emergencyHint}${evidenceText}` }],
+              parts: [{ text: buildUserContent(input) }],
             },
           ],
           config: {

@@ -26,6 +26,7 @@ import {
 } from './safety/emergencyCheck.js'
 import { validateChatRequest, type ChatHistoryMessage } from './schemas/chat.js'
 import {
+  CONTEXT_HISTORY_LIMIT,
   createMemoryConversationRepository,
   createPgConversationRepository,
   type ConversationRepository,
@@ -480,6 +481,60 @@ export function createApp(dependencies: AppDependencies = {}) {
   )
 
   // -------------------------------------------------------------------------
+  // Case Memory Update (Background Task)
+  // -------------------------------------------------------------------------
+  const inProgressCaseMemories = new Set<string>()
+
+  function maybeUpdateCaseMemory(conversationId: string, userId: string): void {
+    if (inProgressCaseMemories.has(conversationId)) {
+      return
+    }
+    inProgressCaseMemories.add(conversationId)
+
+    void (async () => {
+      try {
+        const conv = await conversationRepository.get(conversationId, userId)
+        if (!conv) return
+
+        const cutoff = conv.messageCount - CONTEXT_HISTORY_LIMIT
+        if (cutoff <= 0) return
+
+        const isFirstTime = conv.caseSummaryUpto === 0
+        const shouldUpdate =
+          isFirstTime || cutoff - conv.caseSummaryUpto >= 10
+        if (!shouldUpdate) return
+
+        const allMessages = await conversationRepository.getMessages(
+          conversationId,
+          userId,
+        )
+        if (!allMessages || allMessages.length === 0) return
+
+        const messagesToSummarize = allMessages.slice(0, cutoff).map((m) => ({
+          role: m.role,
+          content: m.content,
+        }))
+
+        const summary = await summarizeCase({
+          messages: messagesToSummarize,
+          language: 'en',
+          purpose: 'memory',
+        })
+
+        await conversationRepository.saveCaseSummary(
+          conversationId,
+          summary,
+          cutoff,
+        )
+      } catch (err) {
+        console.error('Failed to update case memory in background', err)
+      } finally {
+        inProgressCaseMemories.delete(conversationId)
+      }
+    })()
+  }
+
+  // -------------------------------------------------------------------------
   // Chat Handler (JSON & SSE)
   // -------------------------------------------------------------------------
   const handleChat =
@@ -640,6 +695,7 @@ export function createApp(dependencies: AppDependencies = {}) {
             history,
             mode: 'emergency',
             emergencyContext: { category, reason },
+            caseMemory: activeConversation?.caseSummary ?? undefined,
           })
           const check = validateAndSanitizeAnswer(
             dynamicAnswer,
@@ -694,6 +750,8 @@ export function createApp(dependencies: AppDependencies = {}) {
             timings: timer.result(),
           },
         })
+
+        maybeUpdateCaseMemory(conversationId, currentUserId)
       }
 
       if (emergency.isEmergency) {
@@ -774,6 +832,7 @@ export function createApp(dependencies: AppDependencies = {}) {
                 medicalDataRoute.route === 'medical_qa'
                   ? 'medical_qa'
                   : 'medical_api',
+              caseMemory: activeConversation?.caseSummary ?? undefined,
               onSummaryDelta: reply.delta,
             })
             timer.mark('generate')
@@ -891,6 +950,8 @@ export function createApp(dependencies: AppDependencies = {}) {
             timings: timer.result(),
           },
         })
+
+        maybeUpdateCaseMemory(conversationId, currentUserId)
       } catch (error) {
         if (error instanceof ModelServiceError) {
           const errorResponses = {

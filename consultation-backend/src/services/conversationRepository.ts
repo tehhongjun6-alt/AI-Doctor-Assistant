@@ -3,6 +3,7 @@ import pg from 'pg'
 import type { MedicalDataCategory } from '../routing/medicalDataTypes.js'
 import type { EmergencyCategory } from '../safety/emergencyCheck.js'
 import type { ChatAnswer, ChatHistoryMessage } from '../schemas/chat.js'
+import type { CaseSummary } from './caseSummary.js'
 import type { MedicalEvidence } from './medicalData/medicalDataTypes.js'
 
 export const MAX_CONVERSATIONS_PER_USER = 3
@@ -42,6 +43,8 @@ export interface ConversationState extends ConversationStateFields {
   userId: string
   title: string
   messageCount: number
+  caseSummary: CaseSummary | null
+  caseSummaryUpto: number
   createdAt: Date
   updatedAt: Date
 }
@@ -164,6 +167,11 @@ export interface ConversationRepository {
   delete(id: string, userId: string): Promise<boolean>
   deleteAllForUser(userId: string): Promise<number>
   deleteExpired(): Promise<number>
+  saveCaseSummary(
+    id: string,
+    summary: CaseSummary,
+    upto: number,
+  ): Promise<void>
 }
 
 // ============================================================================
@@ -228,6 +236,8 @@ export function createMemoryConversationRepository(options: {
         userId,
         title,
         messageCount: 0,
+        caseSummary: null,
+        caseSummaryUpto: 0,
         topicMessages: [],
         lastEvidence: [],
         lastSearchQueries: [],
@@ -388,6 +398,18 @@ export function createMemoryConversationRepository(options: {
       }
       return count
     },
+
+    async saveCaseSummary(
+      id: string,
+      summary: CaseSummary,
+      upto: number,
+    ): Promise<void> {
+      const conv = conversations.get(id)
+      if (conv) {
+        conv.caseSummary = summary
+        conv.caseSummaryUpto = upto
+      }
+    },
   }
 }
 
@@ -405,6 +427,8 @@ interface ConversationRow {
   last_evidence: MedicalEvidence[] | null
   last_search_queries: string[] | null
   message_count: number
+  case_summary: CaseSummary | null
+  case_summary_upto: number | null
   created_at: Date
   updated_at: Date
 }
@@ -451,6 +475,9 @@ export function createPgConversationRepository(
       lastEvidence: row.last_evidence || [],
       lastSearchQueries: row.last_search_queries || [],
       messageCount: row.message_count,
+      caseSummary: row.case_summary || null,
+      caseSummaryUpto:
+        typeof row.case_summary_upto === 'number' ? row.case_summary_upto : 0,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     }
@@ -479,7 +506,7 @@ export function createPgConversationRepository(
       const result = await getPool().query<ConversationRow>(
         `select id, user_id, title, active_category, active_emergency,
                 topic_messages, last_evidence, last_search_queries,
-                message_count, created_at, updated_at
+                message_count, case_summary, case_summary_upto, created_at, updated_at
          from public.conversations
          where id = $1::uuid
            and user_id = $2::uuid
@@ -761,6 +788,20 @@ export function createPgConversationRepository(
          where updated_at < now() - interval '30 days'`,
       )
       return result.rowCount ?? 0
+    },
+
+    async saveCaseSummary(
+      id: string,
+      summary: CaseSummary,
+      upto: number,
+    ): Promise<void> {
+      await getPool().query(
+        `update public.conversations
+         set case_summary = $2::jsonb,
+             case_summary_upto = $3
+         where id = $1::uuid`,
+        [id, JSON.stringify(summary), upto],
+      )
     },
   }
 }
