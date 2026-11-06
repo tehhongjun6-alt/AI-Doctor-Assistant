@@ -250,14 +250,14 @@ export default function LandingPage({ lang, onChangeLang, onSignIn, onStart }: L
   return (
     <div className="landing" ref={rootRef}>
       <a className="skip-link" href="#lp-main">
-        {lang === 'zh' ? '跳到主要内容' : 'Skip to content'}
+        {copy.skipToContent}
       </a>
       <header className={`lp-nav ${scrolled ? 'is-scrolled' : ''}`}>
         <div className="lp-nav-inner">
           <a href="#top" className="lp-nav-logo">
             <Logo height={26} />
           </a>
-          <nav className="lp-nav-links" aria-label={lang === 'zh' ? '产品' : 'Product'}>
+          <nav className="lp-nav-links" aria-label={copy.navProduct}>
             <a href="#chat">{copy.navChat}</a>
             <a href="#map">{copy.navMap}</a>
           </nav>

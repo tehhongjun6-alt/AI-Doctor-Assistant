@@ -8,7 +8,7 @@ import {
 import { ChatToolbar } from './chat/ChatToolbar'
 import ChatPanel from './chat/ChatPanel'
 import { Icon } from './components/Icon'
-import { translations, type Language } from './i18n'
+import { htmlLang, translations, type Language } from './i18n'
 import LandingPage from './landing/LandingPage'
 import AuthPage from './login/AuthPage'
 import type { CareLevel } from './services/chatService'
@@ -29,7 +29,7 @@ const LANG_KEY = 'ai_doc_lang'
 function loadLanguage(): Language {
   try {
     const saved = localStorage.getItem(LANG_KEY)
-    if (saved === 'zh' || saved === 'en') return saved
+    if (saved === 'zh' || saved === 'en' || saved === 'ms') return saved
   } catch {
     /* ignore */
   }
@@ -93,7 +93,7 @@ export default function App() {
   const t = translations[lang]
 
   useEffect(() => {
-    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en'
+    document.documentElement.lang = htmlLang[lang]
     try {
       localStorage.setItem(LANG_KEY, lang)
     } catch {

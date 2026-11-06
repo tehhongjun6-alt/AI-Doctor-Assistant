@@ -525,9 +525,9 @@ export default function MapPanel({ careLevel, onChangeCareLevel, isVisible, lang
               <h2>{selected.name}</h2>
               <dl>
                 <div><dt><Icon name="pin" size={15} /><span className="sr-only">{t.addressLabel}</span></dt><dd>{selected.address || t.noData}</dd></div>
-                <div><dt><Icon name="navigate" size={15} /><span className="sr-only">{lang === 'zh' ? '距离' : 'Distance'}</span></dt><dd>{distanceText(selected)}</dd></div>
+                <div><dt><Icon name="navigate" size={15} /><span className="sr-only">{t.distanceLabel}</span></dt><dd>{distanceText(selected)}</dd></div>
                 <div><dt><Icon name="phone" size={15} /><span className="sr-only">{t.phoneLabel}</span></dt><dd>{selected.phone ?? t.noData}</dd></div>
-                <div><dt><Icon name="clock" size={15} /><span className="sr-only">{t.hoursLabel}</span></dt><dd>{t.hoursLabel}{lang === 'zh' ? '：' : ': '}{t.noData}</dd></div>
+                <div><dt><Icon name="clock" size={15} /><span className="sr-only">{t.hoursLabel}</span></dt><dd>{t.hoursLabel}{t.colon}{t.noData}</dd></div>
               </dl>
               <div className="place-detail-actions">
                 {selected.phone && (

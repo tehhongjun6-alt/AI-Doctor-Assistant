@@ -82,7 +82,7 @@ export default function ChatPanel({
       const prefix = base
         ? base.endsWith(' ') || base.endsWith('，')
           ? base
-          : base + (lang === 'zh' ? '，' : ' ')
+          : base + t.transcriptSeparator
         : ''
       setInput(prefix + transcript)
     },
@@ -343,13 +343,13 @@ export default function ChatPanel({
         className="chat-scroll"
         ref={scrollRef}
         onScroll={handleScroll}
-        aria-label={lang === 'zh' ? '对话内容' : 'Conversation'}
+        aria-label={t.chatScrollAria}
       >
         <div className="chat-column">
           {isLoadingHistory && !hasConversation && (
             <div className="chat-loading" role="status">
               <span className="spinner" aria-hidden="true" />
-              <span>{lang === 'zh' ? '正在载入对话…' : 'Loading conversation…'}</span>
+              <span>{t.loadingConversation}</span>
             </div>
           )}
 

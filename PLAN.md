@@ -424,7 +424,7 @@
 
 **验收重点**：中文和英文的输出完全不变；马来语的急症模板一定有 999
 
-### [ ] 第 11b 步｜马来语：前端
+### [x] 第 11b 步｜马来语：前端
 
 **做法**：
 1. `i18n.ts`：`Language` 改成 `'zh' | 'en' | 'ms'`；新增 `ms` 区块，**key 必须和 `zh` 完全一样**。用 TypeScript 强制检查，例如先把 zh 抽成常量 `const zh = {...}`，再写 `ms: { ... } satisfies typeof zh`
@@ -463,8 +463,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 11a 步已完成（`schemas/chat.ts` 的 `ChatLanguage` 扩展为 `'zh' | 'en' | 'ms'` 并在 `validateChatRequest` 中支持 `'ms'`；`geminiHealthConsultation.ts` 扩展 `language` 类型并在提示词中新增针对 `'ms'` 的 100% 自然 Bahasa Melayu 规则、急症与免责前缀；`safety/emergencyCheck.ts` 新增马来语急症固定模板（含 999 且零中文字符）与 `emergencyActionText(language)` 函数，并在 `app.ts` 中替换；`safety/outputSafetyCheck.ts` 的 `createSafeFallbackAnswer` 和免责声明新增完整马来语支持；`services/caseSummary.ts` 扩展支持 `'ms'` 语言提示词。新增 `tests/malay.test.ts` 9 个测试，后端 19 个测试套件 94 个测试全部通过、前端 9 个测试套件 36 个测试全部通过、两端构建 0 错误）
-- **下一步**：第 11b 步（马来语：前端）
+- **当前进度**：第 11b 步已完成（`i18n.ts` 将 `Language` 扩展为 `'zh' | 'en' | 'ms'` 并使用 TypeScript `typeof zh` 严格约束三语结构完全一致，全量补充 Bahasa Melayu 翻译；`landingCopy.ts` 与 `AuthPage.tsx` 补充 `ms` 文案；`LangToggle.tsx` 扩展为「中文 / EN / BM」三语切换按钮；提取 `App.tsx`、`ChatPanel.tsx`、`VisitSummaryDialog.tsx`、`LandingPage.tsx`、`MapPanel.tsx` 中所有写死中英文案至 i18n 规范 key，`grep "=== 'zh' ?"` 匹配归零；`chatService.ts` 与 `useSpeechInput.ts` 支持 `'ms'` / `'ms-MY'`；`App.tsx` 自动同步 `document.documentElement.lang` 与 localStorage。新增 `src/i18n.test.tsx` 验证切换 BM 后欢迎词与请求语言均正确为 `'ms'`。前端 10 个测试套件 37 个用例全过、后端 19 个测试套件 94 个用例全过、两端构建 0 错误）
+- **下一步**：第 12 步（部署和线上验证）
 
 ## 6. 分工
 

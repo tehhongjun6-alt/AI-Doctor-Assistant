@@ -1,5 +1,6 @@
 // 问诊对话服务：只负责和后端 /api/chat、/api/chat/stream 通信，不含界面逻辑
 import { authFetch } from '../auth'
+import type { Language } from '../i18n'
 
 export type Urgency = 'low' | 'medium' | 'high' | 'emergency'
 export type FocusMode = 'inquiry_first' | 'assessment_first' | 'advice_first'
@@ -44,7 +45,7 @@ export interface ChatApiResponse {
 export interface ChatRequest {
   conversationId?: string
   message: string
-  language: 'zh' | 'en'
+  language: Language
   regenerate?: boolean
 }
 

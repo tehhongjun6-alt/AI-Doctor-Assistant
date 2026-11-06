@@ -4,6 +4,7 @@ import type { Language } from '../i18n'
 const LANG_MAP: Record<Language, string> = {
   zh: 'zh-CN',
   en: 'en-US',
+  ms: 'ms-MY',
 }
 
 export interface UseSpeechInputOptions {

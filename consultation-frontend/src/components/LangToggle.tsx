@@ -10,12 +10,15 @@ export function LangToggle({
   className?: string
 }) {
   return (
-    <div className={`lang-toggle ${className ?? ''}`} role="group" aria-label="Language / 语言">
+    <div className={`lang-toggle ${className ?? ''}`} role="group" aria-label="Language / 语言 / Bahasa">
       <button type="button" aria-pressed={lang === 'zh'} onClick={() => onChange('zh')}>
         中文
       </button>
       <button type="button" aria-pressed={lang === 'en'} onClick={() => onChange('en')}>
         EN
+      </button>
+      <button type="button" aria-pressed={lang === 'ms'} onClick={() => onChange('ms')}>
+        BM
       </button>
     </div>
   )

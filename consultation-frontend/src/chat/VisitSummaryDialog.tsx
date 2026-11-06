@@ -309,7 +309,7 @@ export function VisitSummaryDialog({
                   <span>
                     {t.generatedAtLabel}:{' '}
                     {new Date(generatedAt).toLocaleString(
-                      lang === 'zh' ? 'zh-CN' : 'en-US'
+                      t.dateLocale
                     )}
                   </span>
                 </div>
