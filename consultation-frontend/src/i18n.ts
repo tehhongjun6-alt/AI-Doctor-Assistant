@@ -59,6 +59,11 @@ export const translations = {
     dangerRedFlags: '出现以下情况请尽快就医',
     sourcesTitle: '参考资料',
     urgencyLabel: { low: '风险较低', medium: '建议留意', high: '建议尽快就医', emergency: '紧急' },
+    copyAnswer: '复制回答',
+    copied: '已复制',
+    shareAnswer: '分享',
+    shareFooter: '— 来自 Medora AI，仅供参考，不能替代医生诊断',
+    emergencyCallText: '⚠️ 紧急情况请立即拨打 999',
 
     // 多对话
     historyBtn: '历史对话',
@@ -190,6 +195,11 @@ export const translations = {
     dangerRedFlags: 'Get medical care soon if you notice',
     sourcesTitle: 'Sources',
     urgencyLabel: { low: 'Low risk', medium: 'Keep an eye on it', high: 'See a doctor soon', emergency: 'Emergency' },
+    copyAnswer: 'Copy',
+    copied: 'Copied',
+    shareAnswer: 'Share',
+    shareFooter: '— From Medora AI, for reference only, not a substitute for doctor diagnosis',
+    emergencyCallText: '⚠️ Emergency: Please call 999 immediately',
 
     historyBtn: 'History',
     conversationListTitle: 'Conversations',

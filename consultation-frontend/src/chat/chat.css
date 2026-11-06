@@ -587,6 +587,39 @@
   color: var(--color-text-tertiary);
 }
 
+.ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.ai-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: var(--fs-12);
+  line-height: var(--lh-tight);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.ai-action-btn:hover {
+  border-color: var(--color-border-strong);
+  background: var(--surface-subtle);
+  color: var(--color-text);
+}
+
+.ai-action-btn:active {
+  background: var(--surface-muted);
+}
+
 /* ---------- 急症卡片：清楚可见，但不让整个界面充满警告 ---------- */
 .emergency-card {
   display: flex;

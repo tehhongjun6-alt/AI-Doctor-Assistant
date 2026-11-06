@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Icon, type IconName } from '../components/Icon'
 import type { Translation } from '../i18n'
 import type { CareLevel, HealthAnswer, Source } from '../services/chatService'
+import { formatAnswerAsText } from './answerText'
 
 export interface ChatMessage {
   id: string
@@ -91,6 +92,44 @@ export function AssistantMessage({ message, t, displayContent, onOpenMap }: Assi
   const isEmergency = Boolean(message.emergency || answer?.urgency === 'emergency')
   const careLevel: CareLevel | null =
     message.mapCareLevel ?? (isEmergency || answer?.urgency === 'high' ? 'hospital' : null)
+
+  const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current)
+      }
+    }
+  }, [])
+
+  const handleCopy = async () => {
+    if (!answer) return
+    const text = formatAnswerAsText(answer, t)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy answer:', err)
+    }
+  }
+
+  const handleShare = async () => {
+    if (!answer) return
+    const text = formatAnswerAsText(answer, t)
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ text })
+      } catch {
+        // User cancelled share or share failed
+      }
+    } else {
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
+    }
+  }
 
   const sections = answer ? (
     answer.focusMode === 'inquiry_first' ? (
@@ -194,6 +233,19 @@ export function AssistantMessage({ message, t, displayContent, onOpenMap }: Assi
       )}
 
       {answer?.disclaimer && <p className="ai-disclaimer">{answer.disclaimer}</p>}
+
+      {answer && (
+        <div className="ai-actions">
+          <button type="button" className="ai-action-btn" onClick={handleCopy} aria-label={t.copyAnswer}>
+            <Icon name="copy" size={15} />
+            <span>{copied ? t.copied : t.copyAnswer}</span>
+          </button>
+          <button type="button" className="ai-action-btn" onClick={handleShare} aria-label={t.shareAnswer}>
+            <Icon name="share" size={15} />
+            <span>{t.shareAnswer}</span>
+          </button>
+        </div>
+      )}
     </article>
   )
 }

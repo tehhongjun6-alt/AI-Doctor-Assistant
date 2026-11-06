@@ -154,7 +154,7 @@
 
 **验收重点**：【你做】用手机点一次 Waze 按钮，确认能打开 Waze 并开始导航
 
-### [ ] 第 4 步｜复制、分享回答（只改前端）
+### [x] 第 4 步｜复制、分享回答（只改前端）
 
 **做法**：
 1. 新建 `src/chat/answerText.ts`：`formatAnswerAsText(answer: HealthAnswer, t: Translation): string`
@@ -463,8 +463,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 3 步已完成（抽取 `links.ts` 封装 `directionsUrl` 与 `wazeUrl`，在 `MapPanel.tsx` 列表卡片与详情弹窗中新增 Waze 导航按钮，`i18n.ts` 新增 `navigateWaze`，新增 `links.test.ts`，前端 16 个测试全过、构建无报错）
-- **下一步**：第 4 步（复制、分享回答）
+- **当前进度**：第 4 步已完成（实现 `formatAnswerAsText` 纯文本格式化并去除 Markdown 星号、急症置顶 999 警示与末尾署名，在 `AssistantMessage.tsx` 增加复制与分享按钮行及已复制状态，`Icon.tsx` 补充 copy/share 图标，`i18n.ts` 补充文案，新增 `answerText.test.ts` 与 `answerActions.test.tsx`，前端 21 个测试全过、构建无报错）
+- **下一步**：第 5 步（参考资料显示来源机构）
 
 ## 6. 分工
 
