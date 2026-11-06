@@ -7,6 +7,8 @@ import {
   type AuthenticatedRequest,
 } from './auth/authRoutes.js'
 import { RequestRateLimiter } from './auth/requestRateLimiter.js'
+import { LoginRateLimiter } from './auth/loginRateLimiter.js'
+import { verifyPassword } from './auth/password.js'
 import {
   createPgUserRepository,
   type UserRepository,
@@ -191,9 +193,77 @@ export function createApp(dependencies: AppDependencies = {}) {
     response.json({ status: 'ok' })
   })
 
-  app.use(
-    '/api/auth',
-    createAuthRouter(dependencies.userRepository ?? createPgUserRepository()),
+  const userRepository =
+    dependencies.userRepository ?? createPgUserRepository()
+  const deleteRateLimiter = new LoginRateLimiter()
+
+  app.use('/api/auth', createAuthRouter(userRepository))
+
+  // -------------------------------------------------------------------------
+  // Delete Account API (Step 7)
+  // -------------------------------------------------------------------------
+  app.delete(
+    '/api/account',
+    requireAuth,
+    async (request: AuthenticatedRequest, response) => {
+      const userId = request.user?.sub
+      const email = request.user?.email
+
+      if (!userId || !email) {
+        response.status(401).json({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: '登录已过期，请重新登录。' },
+        })
+        return
+      }
+
+      const { password } = (request.body ?? {}) as Record<string, unknown>
+      if (typeof password !== 'string' || !password) {
+        response.status(400).json({
+          success: false,
+          error: { code: 'PASSWORD_REQUIRED', message: '请输入密码。' },
+        })
+        return
+      }
+
+      const limitKey = `delete:${userId}`
+      const retryAfter = deleteRateLimiter.retryAfterSeconds(limitKey)
+      if (retryAfter > 0) {
+        response.setHeader('Retry-After', String(retryAfter))
+        response.status(429).json({
+          success: false,
+          error: {
+            code: 'TOO_MANY_ATTEMPTS',
+            message: '尝试太多次，请稍后再试。',
+          },
+        })
+        return
+      }
+
+      const user = await userRepository.findByEmail(email)
+      if (!user || user.id !== userId) {
+        response.status(404).json({
+          success: false,
+          error: { code: 'USER_NOT_FOUND', message: '用户不存在。' },
+        })
+        return
+      }
+
+      const valid = await verifyPassword(password, user.passwordHash)
+      if (!valid) {
+        deleteRateLimiter.recordFailure(limitKey)
+        response.status(401).json({
+          success: false,
+          error: { code: 'WRONG_PASSWORD', message: '密码不正确。' },
+        })
+        return
+      }
+
+      deleteRateLimiter.reset(limitKey)
+      await conversationRepository.deleteAllForUser(userId)
+      await userRepository.deleteById(userId)
+      response.status(204).end()
+    },
   )
 
   // -------------------------------------------------------------------------

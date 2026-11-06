@@ -3,6 +3,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { LangToggle } from '../components/LangToggle'
 import { Logo } from '../components/Logo'
 import type { Language, Translation } from '../i18n'
+import { DeleteAccountDialog } from './DeleteAccountDialog'
 
 export type Section = 'chat' | 'map'
 
@@ -16,6 +17,7 @@ interface SidebarProps {
   onLogout: () => void
   drawerOpen: boolean
   onCloseDrawer: () => void
+  onAccountDeleted?: () => void
 }
 
 const CLOSE_DELAY = 220
@@ -34,8 +36,10 @@ export function Sidebar({
   onLogout,
   drawerOpen,
   onCloseDrawer,
+  onAccountDeleted,
 }: SidebarProps) {
   const [expanded, setExpanded] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const closeTimer = useRef<number | undefined>(undefined)
   const asideRef = useRef<HTMLElement>(null)
 
@@ -155,8 +159,32 @@ export function Sidebar({
             </span>
             <span className="ws-rail-label">{t.logout}</span>
           </button>
+          <button
+            type="button"
+            className="ws-rail-item ws-delete-account"
+            onClick={() => setIsDeleteDialogOpen(true)}
+          >
+            <span className="ws-rail-icon">
+              <Icon name="trash" size={20} />
+            </span>
+            <span className="ws-rail-label">{t.deleteAccount}</span>
+          </button>
         </div>
       </aside>
+
+      <DeleteAccountDialog
+        t={t}
+        isOpen={isDeleteDialogOpen}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        onSuccess={() => {
+          setIsDeleteDialogOpen(false)
+          if (onAccountDeleted) {
+            onAccountDeleted()
+          } else {
+            onLogout()
+          }
+        }}
+      />
     </>
   )
 }

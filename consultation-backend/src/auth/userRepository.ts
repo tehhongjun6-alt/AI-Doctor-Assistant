@@ -15,6 +15,7 @@ export interface UserRepository {
     displayName?: string | null
   }): Promise<UserRecord>
   recordLogin(id: string): Promise<void>
+  deleteById(id: string): Promise<boolean>
 }
 
 export class EmailTakenError extends Error {
@@ -95,6 +96,50 @@ export function createPgUserRepository(
         'update public.users set last_login_at = now() where id = $1',
         [id],
       )
+    },
+
+    async deleteById(id) {
+      const result = await getPool().query(
+        'delete from public.users where id = $1',
+        [id],
+      )
+      return (result.rowCount ?? 0) > 0
+    },
+  }
+}
+
+export function createMemoryUserRepository(): UserRepository {
+  const usersById = new Map<string, UserRecord>()
+  const usersByEmail = new Map<string, UserRecord>()
+  let counter = 1
+
+  return {
+    async findByEmail(email) {
+      return usersByEmail.get(email.toLowerCase()) ?? null
+    },
+
+    async create({ email, passwordHash, displayName }) {
+      const lower = email.toLowerCase()
+      if (usersByEmail.has(lower)) throw new EmailTakenError()
+      const user: UserRecord = {
+        id: `user-${counter++}`,
+        email: lower,
+        passwordHash,
+        displayName: displayName ?? null,
+      }
+      usersById.set(user.id, user)
+      usersByEmail.set(lower, user)
+      return user
+    },
+
+    async recordLogin() {},
+
+    async deleteById(id) {
+      const user = usersById.get(id)
+      if (!user) return false
+      usersById.delete(id)
+      usersByEmail.delete(user.email)
+      return true
     },
   }
 }

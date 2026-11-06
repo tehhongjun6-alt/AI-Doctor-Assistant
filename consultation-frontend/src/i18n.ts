@@ -66,6 +66,15 @@ export const translations = {
     emergencyCallText: '⚠️ 紧急情况请立即拨打 999',
     regenerate: '重新回答',
 
+    deleteAccount: '删除账号',
+    deleteAccountDialogTitle: '删除账号',
+    deleteAccountWarning: '账号和所有对话会永久删除，无法恢复',
+    deleteAccountPasswordPlaceholder: '请输入密码',
+    deleteAccountConfirmBtn: '确认删除',
+    cancel: '取消',
+    wrongPassword: '密码不正确',
+    tooManyAttempts: '尝试太多次，请稍后再试',
+
     // 多对话
     historyBtn: '历史对话',
     conversationListTitle: '历史对话',
@@ -202,6 +211,15 @@ export const translations = {
     shareFooter: '— From Medora AI, for reference only, not a substitute for doctor diagnosis',
     emergencyCallText: '⚠️ Emergency: Please call 999 immediately',
     regenerate: 'Regenerate',
+
+    deleteAccount: 'Delete account',
+    deleteAccountDialogTitle: 'Delete account',
+    deleteAccountWarning: 'Your account and all conversations will be permanently deleted and cannot be recovered.',
+    deleteAccountPasswordPlaceholder: 'Enter password',
+    deleteAccountConfirmBtn: 'Delete account',
+    cancel: 'Cancel',
+    wrongPassword: 'Incorrect password',
+    tooManyAttempts: 'Too many attempts, please try again later',
 
     historyBtn: 'History',
     conversationListTitle: 'Conversations',

@@ -260,6 +260,7 @@ export default function App() {
         onLogout={handleLogout}
         drawerOpen={drawerOpen}
         onCloseDrawer={closeDrawer}
+        onAccountDeleted={handleLogout}
       />
 
       <main className="ws-main">

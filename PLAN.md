@@ -234,7 +234,7 @@
 
 **验收重点**：`popLastTurn` 的 PG 实现用了 transaction，而且 SQL 带 `user_id` 条件；检查在调用 Gemini 之前就完成
 
-### [ ] 第 7 步｜删除账号（两边都改）
+### [x] 第 7 步｜删除账号（两边都改）
 
 **做法（后端）**：
 1. `auth/userRepository.ts`：接口新增 `deleteById(id: string): Promise<boolean>`。PG 实现：`delete from public.users where id = $1`。`conversations` 有 `on delete cascade`（`sql/001_conversations.sql` 第 8 行），对话会一起删除
@@ -463,8 +463,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 6 步已完成（后端 `conversationRepository.ts` 新增 `popLastTurn` 支持内存与 PG 事务实现带 `user_id` 鉴权、`schemas/chat.ts` 与 `app.ts` 支持 `regenerate: true`，在调用 Gemini 前校验并弹出末轮、复用原用户消息重新提问；前端 `AssistantMessage.tsx` 与 `ChatPanel.tsx` 支持仅最后一条 AI 回答展示「重新回答」按钮并在重试时保持已有用户消息。新增 `regenerate.test.ts`、`conversationRepository.test.ts` 补充测试、前端 `regenerate.test.tsx`，后端 68 个测试、前端 25 个测试全过、构建无报错）
-- **下一步**：第 7 步（删除账号）
+- **当前进度**：第 7 步已完成（后端 `auth/userRepository.ts` 补充 `deleteById`、`conversationRepository.ts` 补充 `deleteAllForUser`、`app.ts` 新增 `DELETE /api/account` 路由，强制密码比对、限制失败重试、密码正确后依次级联删除用户对话与账号；前端 `Sidebar.tsx` 新增危险色「删除账号」按钮，配合 `DeleteAccountDialog.tsx` 弹窗确认，密码空时禁用确认按钮，401/429 对应展示错误，204 自动清除本地凭证并返回首页。新增 `tests/account.test.ts` 与 `src/workspace/deleteAccount.test.tsx`，后端 72 个测试、前端 28 个测试全过、构建无报错）
+- **下一步**：第 8 步（就诊摘要）
 
 ## 6. 分工
 

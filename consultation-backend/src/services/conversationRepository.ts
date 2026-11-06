@@ -162,6 +162,7 @@ export interface ConversationRepository {
     userId: string,
   ): Promise<{ userMessage: string } | null>
   delete(id: string, userId: string): Promise<boolean>
+  deleteAllForUser(userId: string): Promise<number>
   deleteExpired(): Promise<number>
 }
 
@@ -362,6 +363,18 @@ export function createMemoryConversationRepository(options: {
       conversations.delete(id)
       messages.delete(id)
       return true
+    },
+
+    async deleteAllForUser(userId: string): Promise<number> {
+      let count = 0
+      for (const [id, conv] of conversations.entries()) {
+        if (conv.userId === userId) {
+          conversations.delete(id)
+          messages.delete(id)
+          count += 1
+        }
+      }
+      return count
     },
 
     async deleteExpired(): Promise<number> {
@@ -731,6 +744,15 @@ export function createPgConversationRepository(
         [id, userId],
       )
       return (result.rowCount ?? 0) > 0
+    },
+
+    async deleteAllForUser(userId: string): Promise<number> {
+      const result = await getPool().query(
+        `delete from public.conversations
+         where user_id = $1::uuid`,
+        [userId],
+      )
+      return result.rowCount ?? 0
     },
 
     async deleteExpired(): Promise<number> {

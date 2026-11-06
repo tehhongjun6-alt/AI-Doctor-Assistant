@@ -209,6 +209,158 @@
   font-size: var(--fs-14);
 }
 
+.ws-delete-account {
+  font-size: var(--fs-14);
+  color: var(--emergency);
+}
+
+.ws-delete-account:hover {
+  background: var(--emergency-bg);
+  color: var(--emergency-hover);
+}
+
+/* ---------- 删除账号对话框 ---------- */
+.delete-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgb(0 0 0 / 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.delete-dialog-card {
+  width: 100%;
+  max-width: 420px;
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  box-shadow: 0 16px 36px -8px rgb(0 0 0 / 0.2);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.delete-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.delete-dialog-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--emergency-bg);
+  color: var(--emergency);
+  flex: none;
+}
+
+.delete-dialog-title {
+  margin: 0;
+  font-size: var(--fs-18);
+  font-weight: var(--fw-bold);
+  color: var(--color-text);
+}
+
+.delete-dialog-warning {
+  margin: 0;
+  font-size: var(--fs-14);
+  line-height: var(--lh-relaxed);
+  color: var(--color-text-secondary);
+}
+
+.delete-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.delete-dialog-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.delete-dialog-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--fs-15);
+  outline: none;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+
+.delete-dialog-input:focus {
+  border-color: var(--emergency);
+  box-shadow: 0 0 0 3px var(--emergency-bg);
+}
+
+.delete-dialog-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--emergency-bg);
+  color: var(--emergency);
+  font-size: var(--fs-13);
+  font-weight: var(--fw-medium);
+}
+
+.delete-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.delete-dialog-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  border: none;
+  transition: background-color var(--dur-fast) ease, opacity var(--dur-fast) ease;
+}
+
+.delete-dialog-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.delete-dialog-btn-cancel {
+  background: var(--surface-muted);
+  color: var(--color-text);
+}
+
+.delete-dialog-btn-cancel:hover:not(:disabled) {
+  background: var(--line-strong);
+}
+
+.delete-dialog-btn-danger {
+  background: var(--emergency);
+  color: var(--white);
+}
+
+.delete-dialog-btn-danger:hover:not(:disabled) {
+  background: var(--emergency-hover);
+}
+
 .ws-backdrop {
   display: none;
 }
