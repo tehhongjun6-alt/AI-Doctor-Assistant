@@ -42,6 +42,7 @@ import {
   validateAndSanitizeAnswer,
 } from './safety/outputSafetyCheck.js'
 import { retrieveMedicalData } from './services/medicalData/medicalDataService.js'
+import { createStageTimer } from './services/stageTimer.js'
 import type {
   MedicalDataRequest,
   MedicalDataResult,
@@ -316,6 +317,7 @@ export function createApp(dependencies: AppDependencies = {}) {
   const handleChat =
     (mode: 'json' | 'stream') =>
     async (request: AuthenticatedRequest, response: express.Response) => {
+      const timer = createStageTimer()
       const reply = createChatResponder(response, mode)
 
       const userId = request.user?.sub
@@ -419,7 +421,10 @@ export function createApp(dependencies: AppDependencies = {}) {
         history = await conversationRepository.getContextHistory(conversationId)
       }
 
+      timer.mark('prepare')
+
       const emergency = checkEmergencyRisk(validChat.message, history)
+      timer.mark('emergencyCheck')
 
       async function respondWithEmergency(
         category: NonNullable<typeof emergency.category>,
@@ -451,6 +456,8 @@ export function createApp(dependencies: AppDependencies = {}) {
           // Fallback to static structured emergency template if Gemini is unavailable or times out
         }
 
+        timer.mark('generate')
+
         await conversationRepository.appendTurn({
           conversationId,
           userId: currentUserId,
@@ -463,6 +470,14 @@ export function createApp(dependencies: AppDependencies = {}) {
           mapCareLevel: 'hospital',
           useForContext: true,
         })
+
+        timer.mark('save')
+
+        const route = 'emergency'
+        console.log(
+          '[chat-timing]',
+          JSON.stringify({ conversationId, route, ...timer.result() }),
+        )
 
         reply.send(200, {
           success: true,
@@ -479,6 +494,7 @@ export function createApp(dependencies: AppDependencies = {}) {
             ...(medicalDataRoute ? { medicalDataRoute } : {}),
             mapCareLevel: 'hospital',
             showHospitalMap: true,
+            timings: timer.result(),
           },
         })
       }
@@ -502,6 +518,7 @@ export function createApp(dependencies: AppDependencies = {}) {
             previousSearchQueries: activeConversation?.lastSearchQueries,
           },
         )
+        timer.mark('route')
 
         if (
           medicalDataRoute.route === 'emergency' ||
@@ -539,6 +556,7 @@ export function createApp(dependencies: AppDependencies = {}) {
               mode: 'direct_model',
               onSummaryDelta: reply.delta,
             })
+            timer.mark('generate')
           } else {
             medicalData = await getMedicalData({
               message: validChat.message,
@@ -548,6 +566,7 @@ export function createApp(dependencies: AppDependencies = {}) {
                   ? activeConversation?.lastEvidence
                   : undefined,
             })
+            timer.mark('retrieve')
 
             rawAnswer = await generateHealthAnswer({
               message: validChat.message,
@@ -560,6 +579,7 @@ export function createApp(dependencies: AppDependencies = {}) {
                   : 'medical_api',
               onSummaryDelta: reply.delta,
             })
+            timer.mark('generate')
             // 来源去重，供前端展示参考资料
             const seenUrls = new Set<string>()
             sources = medicalData.evidence
@@ -579,6 +599,7 @@ export function createApp(dependencies: AppDependencies = {}) {
           ) {
             fallbackTriggeredReason = modelError.message
             rawAnswer = undefined
+            timer.mark('generate')
           } else {
             throw modelError
           }
@@ -598,6 +619,7 @@ export function createApp(dependencies: AppDependencies = {}) {
                   '模型未返回合规内容，已启用安全备用回答。',
                 answer: createSafeFallbackAnswer(language),
               }
+        timer.mark('safety')
 
         const answer = safetyCheck.answer
         const isLayer3Emergency = answer.urgency === 'emergency'
@@ -635,6 +657,13 @@ export function createApp(dependencies: AppDependencies = {}) {
           mapCareLevel,
           useForContext: safetyCheck.passed, // 兜底回答不进入后续上下文
         })
+        timer.mark('save')
+
+        const route = medicalDataRoute.route
+        console.log(
+          '[chat-timing]',
+          JSON.stringify({ conversationId, route, ...timer.result() }),
+        )
 
         reply.send(200, {
           success: true,
@@ -662,6 +691,7 @@ export function createApp(dependencies: AppDependencies = {}) {
             },
             mapCareLevel,
             showHospitalMap: mapCareLevel !== null,
+            timings: timer.result(),
           },
         })
       } catch (error) {

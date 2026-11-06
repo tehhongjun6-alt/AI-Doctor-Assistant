@@ -100,7 +100,7 @@
 
 **验收重点**：除了第 54 行那条规则和 334 行，提示词其他文字一字不动。实际回答效果**需实测**，可以用 `eval/answer-accuracy-test.md` 的 T01、T08 试
 
-### [ ] 第 2 步｜每一步花多少秒（只改后端）
+### [x] 第 2 步｜每一步花多少秒（只改后端）
 
 **做法**：
 1. 新建 `src/services/stageTimer.ts`：
@@ -463,8 +463,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 1 步已完成（`resolveMaxOutputTokens` 支持动态配置与 3000 tokens 回退，`CONSULTATION_SYSTEM_PROMPT` 放宽追问规则至最多 2 轮，新增 `geminiPrompt.test.ts`，后端 57 个测试全过、构建无报错）
-- **下一步**：第 2 步（每一步花多少秒）
+- **当前进度**：第 2 步已完成（新建 `stageTimer.ts` 统计各阶段毫秒耗时与总计，`app.ts` 在对话各节点埋点并在成功响应前打印 `[chat-timing]` 与返回 `timings` 字段，新增 `stageTimer.test.ts` 和 `timing.test.ts`，后端 60 个测试全过、构建无报错）
+- **下一步**：第 3 步（Waze 导航）
 
 ## 6. 分工
 
