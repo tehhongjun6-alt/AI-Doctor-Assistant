@@ -132,7 +132,7 @@
 
 **验收重点**：日志和 `timings` 里只有数字、对话 ID、路由名称，**没有用户的消息内容**
 
-### [ ] 第 3 步｜Waze 导航（只改前端）
+### [x] 第 3 步｜Waze 导航（只改前端）
 
 **问题**：`map/MapPanel.tsx` 第 51 行的 `directionsUrl` 只有 Google Maps，但马来西亚很多人用 Waze
 
@@ -463,8 +463,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 2 步已完成（新建 `stageTimer.ts` 统计各阶段毫秒耗时与总计，`app.ts` 在对话各节点埋点并在成功响应前打印 `[chat-timing]` 与返回 `timings` 字段，新增 `stageTimer.test.ts` 和 `timing.test.ts`，后端 60 个测试全过、构建无报错）
-- **下一步**：第 3 步（Waze 导航）
+- **当前进度**：第 3 步已完成（抽取 `links.ts` 封装 `directionsUrl` 与 `wazeUrl`，在 `MapPanel.tsx` 列表卡片与详情弹窗中新增 Waze 导航按钮，`i18n.ts` 新增 `navigateWaze`，新增 `links.test.ts`，前端 16 个测试全过、构建无报错）
+- **下一步**：第 4 步（复制、分享回答）
 
 ## 6. 分工
 

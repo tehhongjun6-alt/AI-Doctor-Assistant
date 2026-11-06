@@ -16,6 +16,7 @@ import {
   type Place,
   type PlaceType,
 } from '../services/placesService'
+import { directionsUrl, wazeUrl } from './links'
 import './map.css'
 
 maplibregl.setWorkerUrl('https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl-worker.mjs')
@@ -46,10 +47,6 @@ const TYPE_ICON: Record<PlaceType, IconName> = {
   clinic: 'clinic',
   hospital: 'hospital',
   pharmacy: 'pharmacy',
-}
-
-function directionsUrl(p: Place) {
-  return `https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}`
 }
 
 export default function MapPanel({ careLevel, onChangeCareLevel, isVisible, lang, onOpenMenu, fromChatLevel }: MapPanelProps) {
@@ -474,6 +471,10 @@ export default function MapPanel({ careLevel, onChangeCareLevel, isVisible, lang
                             <Icon name="navigate" size={15} />
                             {t.navigateBtn}
                           </a>
+                          <a className="place-action" href={wazeUrl(p)} target="_blank" rel="noopener noreferrer">
+                            <Icon name="navigate" size={15} />
+                            {t.navigateWaze}
+                          </a>
                         </div>
                       </article>
                     </li>
@@ -538,6 +539,10 @@ export default function MapPanel({ careLevel, onChangeCareLevel, isVisible, lang
                 <a className="btn btn-secondary btn-sm" href={directionsUrl(selected)} target="_blank" rel="noopener noreferrer">
                   <Icon name="navigate" size={15} />
                   {t.navigateBtn}
+                </a>
+                <a className="btn btn-secondary btn-sm" href={wazeUrl(selected)} target="_blank" rel="noopener noreferrer">
+                  <Icon name="navigate" size={15} />
+                  {t.navigateWaze}
                 </a>
               </div>
             </div>
