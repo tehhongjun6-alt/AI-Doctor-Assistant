@@ -45,6 +45,7 @@ export interface ChatRequest {
   conversationId?: string
   message: string
   language: 'zh' | 'en'
+  regenerate?: boolean
 }
 
 async function readChatStream(

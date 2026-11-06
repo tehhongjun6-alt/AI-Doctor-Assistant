@@ -157,7 +157,11 @@ export default function ChatPanel({
     el.style.overflowY = el.scrollHeight > 200 ? 'auto' : 'hidden'
   }, [input])
 
-  async function sendMessage(message: string, appendUserMessage: boolean) {
+  async function sendMessage(
+    message: string,
+    appendUserMessage: boolean,
+    options?: { regenerate?: boolean },
+  ) {
     if (appendUserMessage) {
       setMessages((cur) => [
         ...cur,
@@ -174,7 +178,12 @@ export default function ChatPanel({
 
     try {
       const { ok, result } = await requestChat(
-        { conversationId, message, language: lang },
+        {
+          conversationId,
+          message,
+          language: lang,
+          regenerate: options?.regenerate,
+        },
         (summary) => setStreamingText(summary),
         controller.signal,
       )
@@ -281,6 +290,20 @@ export default function ChatPanel({
     void sendMessage(prompt, true)
   }
 
+  function regenerateLast() {
+    if (isSending) return
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
+    if (!lastUserMsg) return
+    setMessages((cur) => {
+      const idx = cur.map((m) => m.role).lastIndexOf('assistant')
+      if (idx === -1) return cur
+      return [...cur.slice(0, idx), ...cur.slice(idx + 1)]
+    })
+    void sendMessage(lastUserMsg.content, false, { regenerate: true })
+  }
+
+  const lastAssistantIndex = messages.map((m) => m.role).lastIndexOf('assistant')
+
   return (
     <div className="chat">
       <div
@@ -320,7 +343,7 @@ export default function ChatPanel({
           )}
 
           <div className="chat-messages" aria-live="polite">
-            {messages.map((message) =>
+            {messages.map((message, index) =>
               message.role === 'user' ? (
                 <div className="msg msg-user" key={message.id}>
                   <div className="msg-user-bubble">
@@ -335,6 +358,11 @@ export default function ChatPanel({
                   t={t}
                   displayContent={message.content}
                   onOpenMap={onOpenMap}
+                  onRegenerate={
+                    !isSending && index === lastAssistantIndex
+                      ? regenerateLast
+                      : undefined
+                  }
                 />
               ),
             )}

@@ -64,6 +64,7 @@ export const translations = {
     shareAnswer: '分享',
     shareFooter: '— 来自 Medora AI，仅供参考，不能替代医生诊断',
     emergencyCallText: '⚠️ 紧急情况请立即拨打 999',
+    regenerate: '重新回答',
 
     // 多对话
     historyBtn: '历史对话',
@@ -200,6 +201,7 @@ export const translations = {
     shareAnswer: 'Share',
     shareFooter: '— From Medora AI, for reference only, not a substitute for doctor diagnosis',
     emergencyCallText: '⚠️ Emergency: Please call 999 immediately',
+    regenerate: 'Regenerate',
 
     historyBtn: 'History',
     conversationListTitle: 'Conversations',

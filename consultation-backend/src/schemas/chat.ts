@@ -17,6 +17,7 @@ export interface ChatRequest {
   language?: ChatLanguage
   images?: ChatImageInput[]
   history?: ChatHistoryMessage[]
+  regenerate?: boolean
 }
 
 export type FocusMode = 'inquiry_first' | 'assessment_first' | 'advice_first'
@@ -98,6 +99,10 @@ export function validateChatRequest(input: unknown): ValidationResult {
     errors.push('conversationId 必须是 1 至 100 个字符的文字。')
   }
 
+  if (input.regenerate !== undefined && typeof input.regenerate !== 'boolean') {
+    errors.push('regenerate 必须是布尔值。')
+  }
+
   if (input.images !== undefined) {
     if (!Array.isArray(input.images) || input.images.length > 4) {
       errors.push('images 必须是最多包含 4 张图片的数组。')
@@ -159,6 +164,7 @@ export function validateChatRequest(input: unknown): ValidationResult {
       language,
       images: input.images as ChatImageInput[] | undefined,
       history: sanitizedHistory,
+      regenerate: input.regenerate as boolean | undefined,
     },
   }
 }

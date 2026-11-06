@@ -222,4 +222,102 @@ describe('conversationRepository - Memory Implementation & State Transitions (St
     expect(formatted).toContain('可能原因：感冒；流感')
     expect(formatted).toContain('建议：多喝水；注意休息')
   })
+
+  describe('popLastTurn (Step 6)', () => {
+    it('pops the last turn, updates message count, and returns the popped user message', async () => {
+      const repo = createMemoryConversationRepository()
+      const userId = 'user-pop-test'
+      const conv = await repo.createIfUnderLimit(userId, '测试重新回答')
+      expect(conv).not.toBeNull()
+
+      await repo.appendTurn({
+        conversationId: conv!.id,
+        userId,
+        userMessage: '第 1 轮问题：头痛',
+        assistantAnswer: {
+          summary: '第 1 轮回答',
+          followUpQuestions: [],
+          possibleCauses: [],
+          advice: [],
+          urgency: 'low',
+          seekCareWhen: [],
+          disclaimer: '免责声明',
+        },
+      })
+
+      await repo.appendTurn({
+        conversationId: conv!.id,
+        userId,
+        userMessage: '第 2 轮问题：发烧 38.5 度',
+        assistantAnswer: {
+          summary: '第 2 轮回答',
+          followUpQuestions: [],
+          possibleCauses: [],
+          advice: [],
+          urgency: 'medium',
+          seekCareWhen: [],
+          disclaimer: '免责声明',
+        },
+      })
+
+      const beforePopMessages = await repo.getMessages(conv!.id, userId)
+      expect(beforePopMessages).toHaveLength(4)
+
+      const popResult = await repo.popLastTurn(conv!.id, userId)
+      expect(popResult).toEqual({ userMessage: '第 2 轮问题：发烧 38.5 度' })
+
+      const afterState = await repo.get(conv!.id, userId)
+      expect(afterState?.messageCount).toBe(2)
+
+      const afterPopMessages = await repo.getMessages(conv!.id, userId)
+      expect(afterPopMessages).toHaveLength(2)
+      expect(afterPopMessages?.map((m) => m.content)).toEqual([
+        '第 1 轮问题：头痛',
+        expect.stringContaining('第 1 轮回答'),
+      ])
+
+      const history = await repo.getContextHistory(conv!.id)
+      expect(history).toHaveLength(2)
+      expect(history[0].content).toBe('第 1 轮问题：头痛')
+    })
+
+    it('returns null when conversation is empty', async () => {
+      const repo = createMemoryConversationRepository()
+      const userId = 'user-empty-test'
+      const conv = await repo.createIfUnderLimit(userId, '空对话')
+      expect(conv).not.toBeNull()
+
+      const popResult = await repo.popLastTurn(conv!.id, userId)
+      expect(popResult).toBeNull()
+    })
+
+    it('returns null when conversation belongs to another user', async () => {
+      const repo = createMemoryConversationRepository()
+      const userId = 'user-owner'
+      const conv = await repo.createIfUnderLimit(userId, '他人对话')
+      expect(conv).not.toBeNull()
+
+      await repo.appendTurn({
+        conversationId: conv!.id,
+        userId,
+        userMessage: '私密问题',
+        assistantAnswer: {
+          summary: '私密回答',
+          followUpQuestions: [],
+          possibleCauses: [],
+          advice: [],
+          urgency: 'low',
+          seekCareWhen: [],
+          disclaimer: '免责声明',
+        },
+      })
+
+      const popResult = await repo.popLastTurn(conv!.id, 'attacker-user')
+      expect(popResult).toBeNull()
+
+      // The turn was not deleted
+      const messages = await repo.getMessages(conv!.id, userId)
+      expect(messages).toHaveLength(2)
+    })
+  })
 })

@@ -363,6 +363,7 @@ export function createApp(dependencies: AppDependencies = {}) {
 
       const validChat = validation.value
       const language = validChat.language ?? 'zh'
+      let chatMessage = validChat.message
 
       maybeDeleteExpired()
 
@@ -371,6 +372,16 @@ export function createApp(dependencies: AppDependencies = {}) {
       let history: ChatHistoryMessage[] = []
 
       if (!validChat.conversationId) {
+        if (validChat.regenerate) {
+          reply.send(400, {
+            success: false,
+            error: {
+              code: 'INVALID_CHAT_REQUEST',
+              message: '重新回答必须提供 conversationId。',
+            },
+          })
+          return
+        }
         const title = validChat.message.trim().slice(0, 15) || '新医疗咨询'
         const created = await conversationRepository.createIfUnderLimit(
           userId,
@@ -407,7 +418,25 @@ export function createApp(dependencies: AppDependencies = {}) {
           })
           return
         }
-        if (activeConversation.messageCount >= MAX_MESSAGES_PER_CONVERSATION) {
+        conversationId = activeConversation.id
+
+        if (validChat.regenerate) {
+          const popped = await conversationRepository.popLastTurn(
+            conversationId,
+            userId,
+          )
+          if (!popped) {
+            reply.send(409, {
+              success: false,
+              error: {
+                code: 'NOTHING_TO_REGENERATE',
+                message: '没有可以重新回答的内容。',
+              },
+            })
+            return
+          }
+          chatMessage = popped.userMessage
+        } else if (activeConversation.messageCount >= MAX_MESSAGES_PER_CONVERSATION) {
           reply.send(409, {
             success: false,
             error: {
@@ -417,13 +446,13 @@ export function createApp(dependencies: AppDependencies = {}) {
           })
           return
         }
-        conversationId = activeConversation.id
+
         history = await conversationRepository.getContextHistory(conversationId)
       }
 
       timer.mark('prepare')
 
-      const emergency = checkEmergencyRisk(validChat.message, history)
+      const emergency = checkEmergencyRisk(chatMessage, history)
       timer.mark('emergencyCheck')
 
       async function respondWithEmergency(
@@ -438,7 +467,7 @@ export function createApp(dependencies: AppDependencies = {}) {
         )
         try {
           const dynamicAnswer = await generateHealthAnswer({
-            message: validChat.message,
+            message: chatMessage,
             language,
             history,
             mode: 'emergency',
@@ -461,7 +490,7 @@ export function createApp(dependencies: AppDependencies = {}) {
         await conversationRepository.appendTurn({
           conversationId,
           userId: currentUserId,
-          userMessage: validChat.message,
+          userMessage: chatMessage,
           assistantAnswer: emergencyAnswer,
           category: medicalDataRoute?.category ?? 'symptom',
           searchQueries: medicalDataRoute?.searchQueries,
@@ -509,7 +538,7 @@ export function createApp(dependencies: AppDependencies = {}) {
 
       try {
         const medicalDataRoute = await routeMedicalData(
-          validChat.message,
+          chatMessage,
           {
             history,
             activeCategory: activeConversation?.activeCategory,
@@ -550,7 +579,7 @@ export function createApp(dependencies: AppDependencies = {}) {
         try {
           if (medicalDataRoute.route === 'direct_model') {
             rawAnswer = await generateHealthAnswer({
-              message: validChat.message,
+              message: chatMessage,
               language,
               history,
               mode: 'direct_model',
@@ -559,7 +588,7 @@ export function createApp(dependencies: AppDependencies = {}) {
             timer.mark('generate')
           } else {
             medicalData = await getMedicalData({
-              message: validChat.message,
+              message: chatMessage,
               route: medicalDataRoute,
               cachedEvidence:
                 activeConversation?.activeCategory === medicalDataRoute.category
@@ -569,7 +598,7 @@ export function createApp(dependencies: AppDependencies = {}) {
             timer.mark('retrieve')
 
             rawAnswer = await generateHealthAnswer({
-              message: validChat.message,
+              message: chatMessage,
               language,
               history,
               evidence: medicalData.evidence,
@@ -641,7 +670,7 @@ export function createApp(dependencies: AppDependencies = {}) {
         await conversationRepository.appendTurn({
           conversationId,
           userId: currentUserId,
-          userMessage: validChat.message,
+          userMessage: chatMessage,
           assistantAnswer: answer,
           sources,
           category: medicalDataRoute.category,

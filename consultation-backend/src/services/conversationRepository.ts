@@ -157,6 +157,10 @@ export interface ConversationRepository {
     assistantMessageId: string
     state: ConversationState
   } | null>
+  popLastTurn(
+    id: string,
+    userId: string,
+  ): Promise<{ userMessage: string } | null>
   delete(id: string, userId: string): Promise<boolean>
   deleteExpired(): Promise<number>
 }
@@ -325,6 +329,29 @@ export function createMemoryConversationRepository(options: {
         assistantMessageId,
         state: { ...conv },
       }
+    },
+
+    async popLastTurn(
+      id: string,
+      userId: string,
+    ): Promise<{ userMessage: string } | null> {
+      const conv = conversations.get(id)
+      if (!conv || conv.userId !== userId || isExpired(conv)) {
+        return null
+      }
+      const list = messages.get(id) ?? []
+      if (list.length < 2) {
+        return null
+      }
+      const lastMsg = list[list.length - 1]
+      const secondLastMsg = list[list.length - 2]
+      if (lastMsg.role !== 'assistant' || secondLastMsg.role !== 'user') {
+        return null
+      }
+      list.splice(list.length - 2, 2)
+      conv.messageCount = Math.max(0, conv.messageCount - 2)
+      conv.updatedAt = getNow()
+      return { userMessage: secondLastMsg.content }
     },
 
     async delete(id: string, userId: string): Promise<boolean> {
@@ -621,6 +648,74 @@ export function createPgConversationRepository(
           assistantMessageId: asstMsgRes.rows[0].id,
           state: rowToState(updateRes.rows[0]),
         }
+      } catch (err) {
+        await client.query('ROLLBACK')
+        throw err
+      } finally {
+        client.release()
+      }
+    },
+
+    async popLastTurn(
+      id: string,
+      userId: string,
+    ): Promise<{ userMessage: string } | null> {
+      const client = await getPool().connect()
+      try {
+        await client.query('BEGIN')
+
+        const convResult = await client.query<{ id: string }>(
+          `select id from public.conversations
+           where id = $1::uuid and user_id = $2::uuid
+             and updated_at >= now() - interval '30 days'
+           for update`,
+          [id, userId],
+        )
+        if (convResult.rows.length === 0) {
+          await client.query('ROLLBACK')
+          return null
+        }
+
+        const msgResult = await client.query<{
+          id: string
+          role: string
+          content: string
+        }>(
+          `select id, role, content
+           from public.conversation_messages
+           where conversation_id = $1::uuid
+           order by created_at desc
+           limit 2`,
+          [id],
+        )
+
+        if (msgResult.rows.length < 2) {
+          await client.query('ROLLBACK')
+          return null
+        }
+
+        const [lastMsg, secondLastMsg] = msgResult.rows
+        if (lastMsg.role !== 'assistant' || secondLastMsg.role !== 'user') {
+          await client.query('ROLLBACK')
+          return null
+        }
+
+        await client.query(
+          `delete from public.conversation_messages
+           where id in ($1::uuid, $2::uuid)`,
+          [lastMsg.id, secondLastMsg.id],
+        )
+
+        await client.query(
+          `update public.conversations
+           set message_count = greatest(0, message_count - 2),
+               updated_at = now()
+           where id = $1::uuid and user_id = $2::uuid`,
+          [id, userId],
+        )
+
+        await client.query('COMMIT')
+        return { userMessage: secondLastMsg.content }
       } catch (err) {
         await client.query('ROLLBACK')
         throw err

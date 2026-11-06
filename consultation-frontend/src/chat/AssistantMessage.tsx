@@ -94,9 +94,16 @@ interface AssistantMessageProps {
   t: Translation
   displayContent: string
   onOpenMap: (careLevel: CareLevel) => void
+  onRegenerate?: () => void
 }
 
-export function AssistantMessage({ message, t, displayContent, onOpenMap }: AssistantMessageProps) {
+export function AssistantMessage({
+  message,
+  t,
+  displayContent,
+  onOpenMap,
+  onRegenerate,
+}: AssistantMessageProps) {
   const answer = message.answer
   const isEmergency = Boolean(message.emergency || answer?.urgency === 'emergency')
   const careLevel: CareLevel | null =
@@ -251,6 +258,17 @@ export function AssistantMessage({ message, t, displayContent, onOpenMap }: Assi
 
       {answer && (
         <div className="ai-actions">
+          {onRegenerate && (
+            <button
+              type="button"
+              className="ai-action-btn"
+              onClick={onRegenerate}
+              aria-label={t.regenerate}
+            >
+              <Icon name="refresh" size={15} />
+              <span>{t.regenerate}</span>
+            </button>
+          )}
           <button type="button" className="ai-action-btn" onClick={handleCopy} aria-label={t.copyAnswer}>
             <Icon name="copy" size={15} />
             <span>{copied ? t.copied : t.copyAnswer}</span>

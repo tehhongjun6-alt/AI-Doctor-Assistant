@@ -199,7 +199,7 @@
 
 **验收重点**：旧对话（没有 provider 的来源）载入后显示正常
 
-### [ ] 第 6 步｜重新回答（两边都改）
+### [x] 第 6 步｜重新回答（两边都改）
 
 **做法（后端）**：
 1. `conversationRepository.ts`：接口新增 `popLastTurn(id: string, userId: string): Promise<{ userMessage: string } | null>`
@@ -463,8 +463,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 5 步已完成（后端 `app.ts` 与存储库类型支持 `provider?: string`，前端 `Source` 接口同步补充并在 `AssistantMessage.tsx` 中映射展示机构标签如 NHS/MedlinePlus，兼容旧对话无标签数据，新增 `sources.test.ts` 与 `sources.test.tsx`，后端 61 个测试、前端 24 个测试全过、构建无报错）
-- **下一步**：第 6 步（重新回答）
+- **当前进度**：第 6 步已完成（后端 `conversationRepository.ts` 新增 `popLastTurn` 支持内存与 PG 事务实现带 `user_id` 鉴权、`schemas/chat.ts` 与 `app.ts` 支持 `regenerate: true`，在调用 Gemini 前校验并弹出末轮、复用原用户消息重新提问；前端 `AssistantMessage.tsx` 与 `ChatPanel.tsx` 支持仅最后一条 AI 回答展示「重新回答」按钮并在重试时保持已有用户消息。新增 `regenerate.test.ts`、`conversationRepository.test.ts` 补充测试、前端 `regenerate.test.tsx`，后端 68 个测试、前端 25 个测试全过、构建无报错）
+- **下一步**：第 7 步（删除账号）
 
 ## 6. 分工
 
