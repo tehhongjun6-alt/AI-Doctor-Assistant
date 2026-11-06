@@ -1,0 +1,290 @@
+/* ==========================================================================
+   登录后工作区：左侧窄栏 + 主内容
+   ========================================================================== */
+
+.ws {
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--white);
+}
+
+.ws-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin-left: var(--rail-collapsed);
+  min-width: 0;
+}
+
+.ws-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ws-view[hidden] {
+  display: none;
+}
+
+.ws-offline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--notice-bg);
+  color: var(--color-text);
+  font-size: var(--fs-13);
+}
+
+.ws-offline svg {
+  color: var(--notice-icon);
+}
+
+/* ---------- 窄栏 ---------- */
+.ws-rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: var(--z-rail);
+  display: flex;
+  flex-direction: column;
+  width: var(--rail-collapsed);
+  padding: var(--space-4) var(--space-3);
+  background: var(--surface-subtle);
+  border-right: 1px solid var(--color-border);
+  overflow: hidden;
+  transition:
+    width var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) ease;
+}
+
+.ws-rail.is-expanded {
+  width: var(--rail-expanded);
+  box-shadow: var(--shadow-lg);
+}
+
+.ws-rail-top {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  /* 收起时可用宽度只有 44px，向两侧借 6px，保证完整 Logo（约 54px 宽）不被裁切 */
+  margin: 0 -6px var(--space-6);
+}
+
+.ws-rail-logo {
+  display: inline-flex;
+  flex: none;
+}
+
+.ws-drawer-close {
+  display: none;
+  margin-left: auto;
+}
+
+.ws-rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ws-rail-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--fs-15);
+  font-weight: var(--fw-medium);
+  text-align: left;
+  white-space: nowrap;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.ws-rail-item:hover {
+  background: var(--surface-muted);
+  color: var(--color-text);
+}
+
+.ws-rail-item.is-active {
+  background: var(--pink-50);
+  color: var(--berry-700);
+  font-weight: var(--fw-semibold);
+}
+
+.ws-rail-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--rose-600);
+}
+
+.ws-rail-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+}
+
+.ws-rail-label {
+  opacity: 0;
+  transform: translateX(-6px);
+  transition:
+    opacity var(--dur-fast) ease,
+    transform var(--dur-base) var(--ease-out);
+}
+
+.ws-rail.is-expanded .ws-rail-label {
+  opacity: 1;
+  transform: none;
+  transition-delay: 60ms;
+}
+
+.ws-rail-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: auto;
+}
+
+.ws-rail-lang {
+  height: 34px;
+  padding-left: 2px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--dur-fast) ease, visibility 0s linear var(--dur-fast);
+}
+
+.ws-rail.is-expanded .ws-rail-lang {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 60ms, 0s;
+}
+
+.ws-rail-account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 44px;
+  min-width: 0;
+}
+
+.ws-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--pink-100);
+  color: var(--berry-700);
+  font-size: var(--fs-13);
+  font-weight: var(--fw-bold);
+}
+
+.ws-account-email {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-13);
+  color: var(--color-text-secondary);
+}
+
+.ws-logout {
+  font-size: var(--fs-14);
+}
+
+.ws-backdrop {
+  display: none;
+}
+
+/* ---------- 手机：抽屉 ---------- */
+@media (max-width: 767px) {
+  .ws-main {
+    margin-left: 0;
+  }
+
+  .ws-rail {
+    position: fixed;
+    width: min(300px, 84vw);
+    transform: translateX(-100%);
+    transition: transform var(--dur-slow) var(--ease-out);
+    z-index: var(--z-drawer);
+    box-shadow: none;
+  }
+
+  .ws-rail.is-expanded {
+    width: min(300px, 84vw);
+  }
+
+  .ws-rail.is-drawer-open {
+    transform: none;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .ws-rail .ws-rail-label,
+  .ws-rail .ws-rail-lang {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+
+  .ws-drawer-close {
+    display: inline-flex;
+  }
+
+  .ws-rail-top {
+    margin: 0 0 var(--space-6) var(--space-1);
+  }
+
+  .ws-rail-logo .medora-logo {
+    height: 24px;
+    width: auto;
+  }
+
+  .ws-rail-item.is-active::before {
+    display: none;
+  }
+
+  .ws-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    background: rgb(40 33 38 / 0.36);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-slow) ease;
+  }
+
+  .ws-backdrop.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* 各页面顶栏里的手机菜单按钮 */
+.ws-menu-btn {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .ws-menu-btn {
+    display: inline-flex;
+  }
+}

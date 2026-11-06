@@ -1,22 +1,28 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
-import './App.css'
-import AuthPage from './AuthPage'
-import ChatPanel from './ChatPanel'
-import ConversationList, { type ConversationItem } from './ConversationList'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import {
   AUTH_EXPIRED_EVENT,
-  authFetch,
   clearSession,
   loadSession,
   type AuthSession,
 } from './auth'
+import { ChatToolbar } from './chat/ChatToolbar'
+import ChatPanel from './chat/ChatPanel'
+import { Icon } from './components/Icon'
 import { translations, type Language } from './i18n'
+import LandingPage from './landing/LandingPage'
+import AuthPage from './login/AuthPage'
+import type { CareLevel } from './services/chatService'
+import {
+  deleteConversation,
+  listConversations,
+  type ConversationItem,
+} from './services/conversationService'
+import { Sidebar, type Section } from './workspace/Sidebar'
+import './chat/chat.css'
+import './workspace/workspace.css'
 
-type ActiveSection = 'chat' | 'map'
-type Translation = (typeof translations)[Language]
-
-// 地图库体积较大（约 1MB），首次打开“附近医院”时才加载
-const MapPanel = lazy(() => import('./MapPanel'))
+// 地图库体积较大，第一次打开 Map 时才加载
+const MapPanel = lazy(() => import('./map/MapPanel'))
 
 const LANG_KEY = 'ai_doc_lang'
 
@@ -30,81 +36,59 @@ function loadLanguage(): Language {
   return 'zh'
 }
 
-function FeatureNavCards({
-  t,
-  activeSection,
-  onSelect,
-}: {
-  t: Translation
-  activeSection: ActiveSection
-  onSelect: (section: ActiveSection) => void
-}) {
-  return (
-    <>
-      <button
-        type="button"
-        className={`feature-nav-card ${activeSection === 'chat' ? 'active' : ''}`}
-        aria-current={activeSection === 'chat' ? 'page' : undefined}
-        onClick={() => onSelect('chat')}
-      >
-        <div className="nav-card-icon icon-bubble" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-            />
-          </svg>
-        </div>
-        <div className="nav-card-texts">
-          <span className="nav-card-title">{t.navChatTitle}</span>
-          <span className="nav-card-desc">{t.navChatDesc}</span>
-        </div>
-      </button>
+type PublicView = { name: 'landing' } | { name: 'auth'; mode: 'login' | 'register' }
 
-      <button
-        type="button"
-        className={`feature-nav-card ${activeSection === 'map' ? 'active' : ''}`}
-        aria-current={activeSection === 'map' ? 'page' : undefined}
-        onClick={() => onSelect('map')}
-      >
-        <div className="nav-card-icon icon-hospital" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-            />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </div>
-        <div className="nav-card-texts">
-          <span className="nav-card-title">{t.navMapTitle}</span>
-          <span className="nav-card-desc">{t.navMapDesc}</span>
-        </div>
-      </button>
-    </>
-  )
+function viewFromHash(): PublicView {
+  if (typeof window === 'undefined') return { name: 'landing' }
+  if (window.location.hash === '#login') return { name: 'auth', mode: 'login' }
+  if (window.location.hash === '#signup') return { name: 'auth', mode: 'register' }
+  return { name: 'landing' }
 }
 
-function App() {
-  const [session, setSession] = useState<AuthSession | null>(() =>
-    loadSession(),
-  )
+function setHash(hash: string) {
+  try {
+    if (hash) {
+      window.history.pushState(null, '', hash)
+    } else {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function useOnline() {
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false))
+  useEffect(() => {
+    const on = () => setOnline(true)
+    const off = () => setOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => {
+      window.removeEventListener('online', on)
+      window.removeEventListener('offline', off)
+    }
+  }, [])
+  return online
+}
+
+export default function App() {
+  const [session, setSession] = useState<AuthSession | null>(() => loadSession())
   const [authNotice, setAuthNotice] = useState<string>()
-  const [activeSection, setActiveSection] = useState<ActiveSection>('chat')
+  const [publicView, setPublicView] = useState<PublicView>(viewFromHash)
   const [lang, setLang] = useState<Language>(loadLanguage)
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [section, setSection] = useState<Section>('chat')
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const [hasOpenedMap, setHasOpenedMap] = useState(false)
-  const [mapCareLevel, setMapCareLevel] = useState<'hospital' | 'clinic'>('hospital')
+  const [careLevel, setCareLevel] = useState<CareLevel>('clinic')
+  const [mapFromChat, setMapFromChat] = useState<CareLevel | null>(null)
 
-  // 多对话状态（第 5 步）
   const [conversations, setConversations] = useState<ConversationItem[]>([])
-  const [conversationsLimit, setConversationsLimit] = useState(3)
-  const [activeConversationId, setActiveConversationId] = useState<
-    string | undefined
-  >(undefined)
+  const [limit, setLimit] = useState(3)
+  const [activeConversationId, setActiveConversationId] = useState<string>()
+  const [chatKey, setChatKey] = useState(0)
 
+  const online = useOnline()
   const t = translations[lang]
 
   useEffect(() => {
@@ -116,96 +100,114 @@ function App() {
     }
   }, [lang])
 
-  // 后端返回 401 或令牌到期时，自动退回登录页
+  // 浏览器前进 / 后退切换官网和登录页
   useEffect(() => {
-    function handleExpired() {
-      setSession(null)
-      setAuthNotice(t.sessionExpired)
-    }
-    window.addEventListener(AUTH_EXPIRED_EVENT, handleExpired)
-    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpired)
-  }, [t.sessionExpired])
+    const onPop = () => setPublicView(viewFromHash())
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  const expireSession = useCallback(() => {
+    clearSession()
+    setSession(null)
+    setAuthNotice(translations[lang].sessionExpired)
+    setPublicView({ name: 'auth', mode: 'login' })
+  }, [lang])
+
+  // 后端返回 401 或令牌到期：回到登录页并提示
+  useEffect(() => {
+    window.addEventListener(AUTH_EXPIRED_EVENT, expireSession)
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, expireSession)
+  }, [expireSession])
 
   useEffect(() => {
     if (!session) return
     const remaining = session.expiresAt - Date.now()
-    const timer = window.setTimeout(() => {
-      clearSession()
-      setSession(null)
-      setAuthNotice(t.sessionExpired)
-    }, Math.max(0, Math.min(remaining, 2_147_000_000)))
+    const timer = window.setTimeout(expireSession, Math.max(0, Math.min(remaining, 2_147_000_000)))
     return () => window.clearTimeout(timer)
-  }, [session, t.sessionExpired])
+  }, [session, expireSession])
 
-  // 加载当前用户的多对话列表
-  async function loadConversations() {
-    if (!session) return
+  const refreshConversations = useCallback(async () => {
     try {
-      const res = await authFetch('/api/conversations')
-      if (!res.ok) return
-      const data = await res.json()
-      if (Array.isArray(data.conversations)) {
-        setConversations(data.conversations)
-        if (typeof data.limit === 'number') {
-          setConversationsLimit(data.limit)
-        }
-      }
+      const data = await listConversations()
+      if (!data) return
+      setConversations(data.conversations)
+      if (data.limit) setLimit(data.limit)
     } catch (err) {
       console.error('Failed to load conversations', err)
     }
-  }
+  }, [])
 
   useEffect(() => {
     if (session) {
-      void loadConversations()
+      void refreshConversations()
     } else {
       setConversations([])
       setActiveConversationId(undefined)
     }
-  }, [session])
+  }, [session, refreshConversations])
+
+  function goToAuth(mode: 'login' | 'register') {
+    setAuthNotice(undefined)
+    setPublicView({ name: 'auth', mode })
+    setHash(mode === 'login' ? '#login' : '#signup')
+    window.scrollTo?.(0, 0)
+  }
+
+  function goToLanding() {
+    setPublicView({ name: 'landing' })
+    setHash('')
+  }
 
   function handleLogout() {
     clearSession()
     setSession(null)
     setAuthNotice(undefined)
-    setIsMobileMenuOpen(false)
-    setActiveSection('chat')
+    setDrawerOpen(false)
+    setSection('chat')
     setHasOpenedMap(false)
-    setMapCareLevel('hospital')
     setConversations([])
     setActiveConversationId(undefined)
+    setPublicView({ name: 'landing' })
+    setHash('')
   }
 
-  function handleSelectSection(section: ActiveSection) {
-    if (section === 'map') {
+  function selectSection(next: Section) {
+    if (next === 'map') {
       setHasOpenedMap(true)
-      setMapCareLevel('hospital')
+      setMapFromChat(null)
     }
-    setActiveSection(section)
-    setIsMobileMenuOpen(false)
+    setSection(next)
   }
 
-  function handleSelectConversation(id?: string) {
-    setActiveConversationId(id)
-    setActiveSection('chat')
+  function openMapFromChat(level: CareLevel) {
+    setCareLevel(level)
+    setMapFromChat(level)
+    setHasOpenedMap(true)
+    setSection('map')
   }
 
-  function handleNewConversation() {
-    if (conversations.length >= conversationsLimit) return
+  function startNewChat() {
+    if (conversations.length >= limit) return
     setActiveConversationId(undefined)
-    setActiveSection('chat')
+    setChatKey((k) => k + 1)
+    setSection('chat')
+  }
+
+  function selectConversation(id: string) {
+    setActiveConversationId(id)
+    setChatKey((k) => k + 1)
+    setSection('chat')
   }
 
   async function handleDeleteConversation(id: string) {
     if (!window.confirm(t.deleteConversationConfirm)) return
     try {
-      const res = await authFetch(`/api/conversations/${id}`, {
-        method: 'DELETE',
-      })
-      if (res.ok || res.status === 204 || res.status === 404) {
+      if (await deleteConversation(id)) {
         setConversations((prev) => prev.filter((c) => c.id !== id))
         if (activeConversationId === id) {
           setActiveConversationId(undefined)
+          setChatKey((k) => k + 1)
         }
       }
     } catch (err) {
@@ -213,216 +215,112 @@ function App() {
     }
   }
 
-  function handleConversationChanged() {
-    void loadConversations()
-  }
+  const closeDrawer = useCallback(() => setDrawerOpen(false), [])
 
-  // 1. 未登录（首次进入或令牌过期）：显示登录 / 注册页面
+  // 未登录：品牌官网或登录页
   if (!session) {
+    if (publicView.name === 'auth') {
+      return (
+        <AuthPage
+          key={publicView.mode}
+          lang={lang}
+          onChangeLang={setLang}
+          notice={authNotice}
+          initialMode={publicView.mode}
+          onBack={goToLanding}
+          onAuthenticated={(next) => {
+            setSession(next)
+            setAuthNotice(undefined)
+            setSection('chat')
+            setHash('')
+          }}
+        />
+      )
+    }
     return (
-      <AuthPage
+      <LandingPage
         lang={lang}
         onChangeLang={setLang}
-        notice={authNotice}
-        onAuthenticated={(next) => {
-          setSession(next)
-          setAuthNotice(undefined)
-        }}
+        onSignIn={() => goToAuth('login')}
+        onStart={() => goToAuth('register')}
       />
     )
   }
 
-  const accountBar = (
-    <div className="account-bar">
-      <span className="account-email" title={session.user.email}>
-        {session.user.email}
-      </span>
-      <button type="button" className="logout-btn" onClick={handleLogout}>
-        {t.logout}
-      </button>
-    </div>
-  )
-
-  // 2. 已登录：展示完整系统
+  // 已登录：工作区（默认进入 Chat）
   return (
-    <div className="app-viewport">
-      <div className="app-container">
-        {/* 左侧边栏卡片（桌面端显示，手机端隐藏） */}
-        <aside className="sidebar-card">
-          <div className="sidebar-top-section">
-            {/* 1. 顶部 Logo & 标题 */}
-            <header className="sidebar-brand-header">
-              <div className="brand-icon-box" aria-hidden="true">
-                <span className="cross-icon">+</span>
-              </div>
-              <div className="brand-text-wrap">
-                <div className="brand-title-row">
-                  <span className="brand-title">{t.brandTitle}</span>
-                  <span className="beta-badge">Beta</span>
-                </div>
-                <p className="brand-subtitle">{t.brandSubtitle}</p>
-              </div>
-            </header>
+    <div className="ws">
+      <Sidebar
+        t={t}
+        lang={lang}
+        onChangeLang={setLang}
+        active={section}
+        onSelect={selectSection}
+        email={session.user.email}
+        onLogout={handleLogout}
+        drawerOpen={drawerOpen}
+        onCloseDrawer={closeDrawer}
+      />
 
-            {/* 2. 中间 3D 机器人医生立绘与客服状态 */}
-            <section className="doctor-hero-card">
-              <div className="doctor-hero-visual-wrapper">
-                <div className="doctor-halo-bg" aria-hidden="true"></div>
-                <div
-                  className="doctor-hero-sprite"
-                  aria-label="3D AI Doctor Robot"
-                ></div>
-              </div>
-
-              <div className="doctor-profile-info">
-                <div className="doctor-name-row">
-                  <span className="doctor-main-title">{t.doctorMainTitle}</span>
-                  <div className="status-pill">
-                    <span className="status-dot"></span>
-                    <span className="status-text">{t.onlineStatus}</span>
-                  </div>
-                </div>
-                <p className="doctor-desc">{t.doctorDesc}</p>
-              </div>
-            </section>
+      <main className="ws-main">
+        {!online && (
+          <div className="ws-offline" role="status">
+            <Icon name="wifiOff" size={16} />
+            {t.offlineNotice}
           </div>
+        )}
 
-          {/* 2.5 历史对话列表（桌面端） */}
-          <ConversationList
-            conversations={conversations}
-            activeId={activeConversationId}
-            limit={conversationsLimit}
-            onSelect={handleSelectConversation}
-            onDelete={handleDeleteConversation}
-            onNew={handleNewConversation}
+        {/* 两个视图都保留在页面里，切换功能不会清空当前对话 */}
+        <div className="ws-view" hidden={section !== 'chat'}>
+          <ChatToolbar
             t={t}
+            conversations={conversations}
+            limit={limit}
+            activeId={activeConversationId}
+            onSelect={selectConversation}
+            onDelete={(id) => void handleDeleteConversation(id)}
+            onNew={startNewChat}
+            onOpenMenu={() => setDrawerOpen(true)}
           />
-
-          {/* 3. 底部两个功能卡片：1. 聊天 2. 查看附近的医院 */}
-          <nav className="feature-nav-list" aria-label={t.mobileMenuTitle}>
-            <FeatureNavCards
-              t={t}
-              activeSection={activeSection}
-              onSelect={handleSelectSection}
-            />
-          </nav>
-          {accountBar}
-        </aside>
-
-        {/* 右侧主工作区卡片：手机端默认第一页即全屏展示此区域 */}
-        <main className="main-chat-card">
-          <div
-            className="panel-content-wrap"
-            style={{ display: activeSection === 'chat' ? 'flex' : 'none' }}
-          >
-            <ChatPanel
-              key={activeConversationId ?? 'new'}
-              conversationId={activeConversationId}
-              onConversationChanged={handleConversationChanged}
-              onOpenMap={(careLevel) => {
-                setMapCareLevel(careLevel || 'hospital')
-                setHasOpenedMap(true)
-                setActiveSection('map')
-              }}
-              lang={lang}
-              onChangeLang={setLang}
-              onOpenMobileMenu={() =>
-                setIsMobileMenuOpen((prev) => !prev)
-              }
-              isMobileMenuOpen={isMobileMenuOpen}
-            />
-          </div>
-          <div
-            className="panel-content-wrap"
-            style={{ display: activeSection === 'map' ? 'flex' : 'none' }}
-          >
-            {hasOpenedMap && (
-              <Suspense
-                fallback={
-                  <div className="map-lazy-loading" role="status">
-                    <div className="loading-spinner" aria-hidden="true" />
-                    <span>{t.loadingMap}</span>
-                  </div>
-                }
-              >
-                <MapPanel
-                  careLevel={mapCareLevel}
-                  isVisible={activeSection === 'map'}
-                  onBackToChat={() => handleSelectSection('chat')}
-                  lang={lang}
-                  onChangeLang={setLang}
-                  onOpenMobileMenu={() =>
-                    setIsMobileMenuOpen((prev) => !prev)
-                  }
-                  isMobileMenuOpen={isMobileMenuOpen}
-                />
-              </Suspense>
-            )}
-          </div>
-        </main>
-
-        {/* 手机端：点击右上角 + 号后，从下往上滑动弹出的功能切换抽屉 */}
-        <div
-          className={`mobile-sheet-backdrop ${isMobileMenuOpen ? 'visible' : ''}`}
-          onClick={() => setIsMobileMenuOpen(false)}
-          aria-hidden={!isMobileMenuOpen}
-        >
-          <section
-            className={`mobile-bottom-sheet ${isMobileMenuOpen ? 'open' : ''}`}
-            onClick={(e) => e.stopPropagation()}
-            aria-label={t.mobileMenuTitle}
-          >
-            <div className="sheet-drag-handle" aria-hidden="true"></div>
-            <header className="sheet-header">
-              <div className="sheet-brand-row">
-                <div className="brand-icon-box sheet-brand-icon" aria-hidden="true">
-                  <span className="cross-icon">+</span>
-                </div>
-                <div>
-                  <span className="sheet-title">{t.mobileMenuTitle}</span>
-                  <p className="sheet-subtitle">{t.brandSubtitle}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                className="sheet-close-btn"
-                onClick={() => setIsMobileMenuOpen(false)}
-                aria-label={t.closeMenu}
-              >
-                ✕
-              </button>
-            </header>
-
-            {/* 手机端对话列表 */}
-            <ConversationList
-              conversations={conversations}
-              activeId={activeConversationId}
-              limit={conversationsLimit}
-              onSelect={(id) => {
-                handleSelectConversation(id)
-                setIsMobileMenuOpen(false)
-              }}
-              onDelete={handleDeleteConversation}
-              onNew={() => {
-                handleNewConversation()
-                setIsMobileMenuOpen(false)
-              }}
-              t={t}
-            />
-
-            <div className="sheet-nav-options">
-              <FeatureNavCards
-                t={t}
-                activeSection={activeSection}
-                onSelect={handleSelectSection}
-              />
-            </div>
-            {accountBar}
-          </section>
+          <ChatPanel
+            key={chatKey}
+            initialConversationId={activeConversationId}
+            onConversationCreated={(id) => setActiveConversationId(id)}
+            onConversationMissing={() => {
+              setActiveConversationId(undefined)
+              void refreshConversations()
+            }}
+            onListChanged={() => void refreshConversations()}
+            onOpenMap={openMapFromChat}
+            lang={lang}
+          />
         </div>
-      </div>
+
+        <div className="ws-view" hidden={section !== 'map'}>
+          {hasOpenedMap && (
+            <Suspense
+              fallback={
+                <div className="chat-loading" role="status" style={{ justifyContent: 'center' }}>
+                  <span className="spinner" aria-hidden="true" />
+                  <span>{t.loadingMap}</span>
+                </div>
+              }
+            >
+              <MapPanel
+                careLevel={careLevel}
+                onChangeCareLevel={(level) => {
+                  setCareLevel(level)
+                  setMapFromChat(null)
+                }}
+                fromChatLevel={mapFromChat}
+                isVisible={section === 'map'}
+                lang={lang}
+                onOpenMenu={() => setDrawerOpen(true)}
+              />
+            </Suspense>
+          )}
+        </div>
+      </main>
     </div>
   )
 }
-
-export default App

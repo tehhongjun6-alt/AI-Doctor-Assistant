@@ -47,8 +47,12 @@ describe('login gate', () => {
     sessionStorage.clear()
   })
 
-  it('shows the sign-in page when there is no session', () => {
+  it('shows the brand site without a session and opens sign-in from it', async () => {
+    const user = userEvent.setup()
     render(<App />)
+    // 未登录先看到品牌官网，看不到对话输入框
+    expect(screen.queryByLabelText(INPUT_LABEL)).toBeNull()
+    await user.click(screen.getByRole('button', { name: '登录' }))
     expect(screen.getByRole('tab', { name: '登录' })).toBeTruthy()
     expect(screen.queryByLabelText(INPUT_LABEL)).toBeNull()
   })
