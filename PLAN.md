@@ -1,362 +1,505 @@
-# PLAN.md — AI Doctor Assistant 升级计划
+# PLAN.md — Medora 第二批功能
 
-> 规划日期：2026-11-05｜状态：✅ 全部完成（2026-11-06）
-> 执行者须知：每一步都写明了「改哪些文件、怎么做、完成标准」。**设计已经定好，照着做，不要自行改设计。** 如果发现计划和代码对不上，停下来汇报，不要自己发挥。
+> 规划日期：2026-11-06｜状态：规划已确认，尚未开始执行
+> 上一份计划（7 步升级，已全部完成）存档在 `plans/2026-11-05-upgrade-v1.md`
+>
+> **执行者须知**：每一步都写明了「改哪些文件、怎么做、完成标准」。**设计已经定好，照着做，不要自行改设计。** 如果发现计划和代码对不上，停下来汇报，不要自己发挥。**第 12 步之前不要推送**：推送会触发线上部署，而第 9 步要先在数据库执行 SQL。
 
 ## 1. 项目是什么
 
-- **目标**：在现有基础上提升回答质量和安全性，加入「多对话」功能，并让地图按病情推荐就医地点
-- **用户**：马来西亚用户（中文 / 英文，部分用户会用马来语），用手机或电脑网页使用
+- **产品**：Medora，给马来西亚用户用的 AI 健康咨询网页（[heymedora.vercel.app](https://heymedora.vercel.app/)），帮用户梳理症状、判断轻重、找附近诊所和医院
+- **目标**：在现有功能上加 12 项改进，让回答更可靠、更好用，并支持马来语
+- **用户**：马来西亚的中文、英文、马来语用户，用手机或电脑
 - **项目阶段**：**C（已经做完，要升级）**｜**规模**：中型（产品原型）
 - **现有架构**
-  - 前端：React 19 + Vite + MapLibre，部署在 Vercel（`consultation-frontend/`）
+  - 前端：React 19 + Vite + MapLibre，部署在 Vercel（`consultation-frontend/`）。2026-11-06 改版成 Medora 品牌后，代码分成这些文件夹：`chat/`、`map/`、`workspace/`、`landing/`、`login/`、`services/`、`components/`、`design/`（`design/tokens.css` 是设计规范）
   - 后端：Express 5 + TypeScript + Gemini（`@google/genai`），部署在 Render（`consultation-backend/`）
-  - 数据库：Supabase Postgres，通过 `pg` 连接（`src/auth/userRepository.ts` 是现有写法的范例），目前只存账号
-  - 问诊流程（`src/app.ts` 的 `handleChat`）：急症检测 → 路由（`routing/medicalDataRouter.ts`：规则有把握就直接用，否则交给 Gemini，Gemini 失败时退回规则）→ 查医学资料 → Gemini 生成固定格式的回答 → 输出安全检查
-  - 对话记忆：现在存在**后端内存**（`services/conversationStore.ts`，30 分钟过期）和**前端 sessionStorage**（`ChatPanel.tsx`），重启或关闭标签页就没了
-- **测试命令**：后端 `cd consultation-backend && npm test`；前端 `cd consultation-frontend && npm test`
+  - 数据库：Supabase Postgres，`public.users`、`public.conversations`、`public.conversation_messages` 三张表
+  - 问诊流程（`src/app.ts` 的 `handleChat`，约第 316–717 行）：急症检测 → 路由 → 查医学资料 → Gemini 生成回答 → 安全检查 → `appendTurn` 存入数据库
+- **测试命令**
+  - 后端：`cd consultation-backend && npm test`，编译检查 `npm run build`
+  - 前端：`cd consultation-frontend && npm test`（**必须用 `npm test`**，它会加上 jsdom 环境，直接跑 `npx vitest` 会全部失败），编译检查 `npm run build`
 
 ## 2. 已定决策
 
 | 决策 | 选择 | 为什么 |
 |---|---|---|
-| 机制 | 保持现有流水线（规则路由 + RAG + 一次 Gemini 结构化输出） | 问诊流程固定，不需要 ReAct；改成多 Agent 会更慢、更耗额度 |
-| 框架 | 沿用 Express + React + Supabase Postgres（`pg`） | C 阶段优先沿用；不加新依赖 |
-| 对话存储 | Supabase Postgres 的两张新表 | 和账号放在同一个数据库 |
-| AI 记忆 | 每个对话独立；发给 Gemini 的是该对话最近 20 条，加上话题、紧急状态、上一轮资料和搜索词 | 全部消息都保存，但只把最近 20 条交给 AI。病情摘要以后再做 |
-| 对话从哪来 | **以服务器为准**：不再使用前端传来的 `history`；对话 ID 由服务器生成 | 防止前端伪造聊天记录，也避免两边记录不一致 |
-| 什么时候建对话 | **发出第一条消息时才建**（不提供「建空对话」接口） | 不会出现占位置的空对话 |
-| 自动删除 | 打开对话列表或发消息时，顺便删除**所有用户**的过期对话（每小时最多执行一次） | Render 免费档会休眠，不能依赖定时任务 |
-| 地图 | 沿用 Geoapify，加入诊所和药房分类 | 分类名已查证（见第 7 节） |
+| 机制 | 保持现有流水线；新增一个「病情摘要」模块，同时用于就诊摘要和病情摘要记忆 | 两个功能需要的能力相同，做一次就好 |
+| 框架 | 沿用 Express + React + Supabase，**不加新的 npm 套件** | C 阶段优先沿用 |
+| 就诊摘要 | 每次按按钮时即时生成，**不存进数据库** | 内容以对话为准，不用担心旧摘要和对话不一致 |
+| 病情摘要记忆 | 对话超过 20 条后，每多 10 条就把 20 条以外的旧内容整理一次，存在 `conversations.case_summary`；**在回答送出之后才在后台生成**，不拖慢回答 | 只多耗一点 Gemini 额度，长对话也记得开头的重点 |
+| 重新回答 | 先删除最后一轮，再用同一句话重新生成 | 做法简单。失败时前端显示错误和「重试」按钮，重试会把那句话当普通消息重新发送，所以不会丢失内容 |
+| 删除账号 | 必须重新输入密码；删除后，账号和所有对话**立即永久删除** | 健康数据，要彻底删除；输入密码可以防止误删 |
+| 每一步花多少秒 | 写进 Render 的日志，也放在回应的 `timings` 字段；**不做界面** | 给开发者看的，不打扰用户 |
+| 语音输入 | 用浏览器自带的语音识别，**不经过我们的后端** | 不用花钱，也不用加套件 |
+| 马来语 | 语言代码 `ms`，界面按钮显示「BM」；AI 先翻译，再由会马来语的人审核 | 跟中文、英文同等支持 |
 
-### 多对话规则（已和用户确认）
+### 已和用户确认的细节
 
-- 每个用户**最多 3 个对话**；满了显示「已满」，用户要**自己删掉一个**才能新建
-- 标题 = 第一条用户消息的**前 15 个字**，超过就加「…」（不调用 AI）
-- 每个对话**最多 100 条消息**（用户和 AI 的消息合计，即 50 轮来回），满了提示开新对话
-- 对话**超过 30 天没有新消息就自动删除**（以最后一条消息的时间计算）
-- 每个对话的记忆各自独立
+- 提示词放宽：AI 不确定时，要**明确告诉用户还不确定，并请用户多提供哪些信息**，不要硬猜原因
+- 回答长度上限：从 1500 调到 3000 tokens
+- 导航：Google Maps 按钮新设计已经有了，**只需要加 Waze**
+- 复制和分享：手机用系统分享；不支持的浏览器改为分享到 WhatsApp
+- 健康指南**不在这一批**，这一批全部完成后再规划
 
 ## 3. 护栏与不可改动的部分
 
 ### 护栏（必须做到）
 
-- 原有的继续保留：急症拦截、输出安全检查、不正式确诊、按用户限流
+- 原有的继续保留：急症拦截（含马来语）、输出安全检查（含英文）、不正式确诊、按用户限流、对话只有本人能看
 - 新增：
-  - 急症检测能认出马来语描述
-  - 英文回答也会经过安全检查
-  - 只有本人能列出、读取、续写、删除自己的对话。别人的对话一律回 **404**，不透露它存不存在
-  - 删除对话时，数据库里的对话和消息**真的删掉**（用 `on delete cascade`）
-  - 新表**开启 RLS**（Row Level Security），防止别人通过 Supabase 的公开接口读取表格
-  - 页面上说明「对话会保存在你的账号，30 天没有新消息会自动删除」
-  - 马来语急症关键词要请会马来语的人看一遍
-  - 所有新增的界面文字都要有中文和英文两个版本（`i18n.ts`）
+  - 就诊摘要和病情摘要**只整理用户明确说过的内容**，没提到的就留空，不得推测；AI 的分析要标明「AI 初步分析，不是诊断」
+  - 就诊摘要页面要注明「由 AI 整理，可能有遗漏或错误，就诊前请自行核对」
+  - 删除账号必须先验证密码；只能删除自己的账号；删除后连同对话一起清除
+  - 复制或分享出去的急症回答，文字里**一定要有拨打 999 的提示**
+  - 语音输入旁边要说明「语音会由浏览器的语音服务处理」
+  - 记录花费时间的日志里**不能出现用户说的内容**，只能有数字和路由名称
+  - 马来语文字（界面、急症模板、免责声明）要请会马来语的人看一遍
+  - 所有新增的界面文字都要有中文、英文；第 11 步以后还要有马来语
+  - 新界面一律使用 `src/design/tokens.css` 里的变量，不准自己写色码
 
 ### 不可改动（除非用户明确同意）
 
-- 部署平台（Render / Vercel / Supabase），Render 的 `DATABASE_URL` 继续用 Supabase **Session pooler**
-- 现有的 `public.users` 表结构和登录方式
+- 部署平台（Render / Vercel / Supabase）；Render 的 `DATABASE_URL` 继续用 Supabase **Session pooler**
+- `public.users` 的表结构和登录方式；`conversations` 和 `conversation_messages` **只能新增字段，不能改或删除现有字段**
 - 现有的急症规则：**只能新增，不能删改**
 - Gemini 模型和思考程度
-- 接口路径 `/api/chat`、`/api/chat/stream`、`/api/hospitals/nearby`：可以加字段；行为只能按本计划写明的方式改
-- 本地开发端口：后端 8002（8000 已被另一个项目占用）
+- 现有接口的路径和行为：可以加字段，行为只能按本计划写的方式改
+- Medora 的视觉设计（`src/design/tokens.css`、品牌、颜色）
+- 本地开发端口：后端 8002
 
 ## 4. 分步计划
 
-### [x] 第 1 步｜A1：追问那一轮的资料搜索（只改后端）
+### [ ] 第 1 步｜调高回答长度上限 + 提示词放宽（只改后端）
 
-**问题**：用户回答追问时（如「三天了，38 度」），在两种情况下会把**中文原句**拿去搜英文医学数据库：(a) Gemini 路由失败，退回规则；(b) Gemini 没提取出英文词。
+**问题**：
+- `services/geminiHealthConsultation.ts` 第 334 行 `maxOutputTokens: 1500`，长回答容易被截断，解析失败后用户只会看到兜底回答
+- 第 54 行的「防无限审问铁律」规定：用户回答过一轮追问后，就**必须**给出原因判断。信息不够时，AI 只能硬猜
 
-**已实现**（2026-11-05，后端 24 个测试全部通过）：
-- 会话新增 `lastSearchQueries`（`conversationStore.ts`），每轮保存搜索词
-- 路由上下文新增 `previousSearchQueries`（`medicalDataRouter.ts` 的 `MedicalDataRouteContext`、`heuristicRouter.ts` 的 `HeuristicRouteContext`）
-- 情况 (a) 和 (b) 都优先沿用 `previousSearchQueries`；规则路由没有时，再从 `topicMessages` 里找上一句的医学词；都没有才用原句
-- **第 4b 步要沿用这两个名称**：数据库和会话状态用 `lastSearchQueries`，路由上下文用 `previousSearchQueries`
+**做法**：
+1. `geminiHealthConsultation.ts`：新增并 export 纯函数 `resolveMaxOutputTokens(value: string | undefined): number`。`value` 是正整数就用它，否则回传 `3000`。第 334 行改成 `maxOutputTokens: resolveMaxOutputTokens(process.env.GEMINI_MAX_OUTPUT_TOKENS)`
+2. 同一个文件：把 `const systemPrompt` 改名为 `export const CONSULTATION_SYSTEM_PROMPT`，所有用到的地方一起改
+3. 把第 54 行那一条规则**整条替换**成下面这段（其他提示词一字不改）：
+   ```
+   2) 或者【追问规则】：用户已经回答过你上一轮的追问时，本轮默认切换为 "assessment_first"（或 "advice_first"）。
+      但如果关键信息仍然不足以判断，可以再用一次 "inquiry_first"，并且必须做到：
+      - summary 第一句明确告诉用户「目前信息还不够确定」，并说明还缺哪些信息、为什么需要；
+      - followUpQuestions 只问 1～2 个最关键的问题；
+      - possibleCauses 只列最常见的 1 条，或设为 []，绝不编造；
+      - advice 照常给出安全的临时处理方式，seekCareWhen 保留危险信号。
+      连续使用 "inquiry_first" 最多 2 轮；第 3 轮必须给出评估，并在 summary 中说明哪些地方仍不确定。
+   ```
 
-### [x] 第 2 步｜A3：安全检查补英文规则（只改后端）
+**允许修改的现有测试**：无
 
-**做法**：在 `safety/outputSafetyCheck.ts` 的 `UNSAFE_MEDICAL_PATTERNS` 里**新增**英文规则，覆盖三种说法：
-- 越权确诊：如 "I diagnose you with"、"you definitely have"
-- 保证治好：如 "guaranteed to cure"、"100% cure"
-- 劝人别就医：如 "no need to see a doctor"、"you don't need to go to the hospital"
+**完成标准**：
+- 新增 `tests/geminiPrompt.test.ts`：
+  - `resolveMaxOutputTokens(undefined)` → `3000`；`'4000'` → `4000`；`'abc'` → `3000`；`'0'` → `3000`
+  - `CONSULTATION_SYSTEM_PROMPT` 包含「目前信息还不够确定」和「最多 2 轮」，**不包含**「绝不允许连续两轮」
+- 后端 `npm test` 全部通过，`npm run build` 没有错误
 
-**完成标准**
-- 新增测试：上面每种说法至少 1 个例子会被拦下
-- 新增测试：正常的英文回答（如 "Please see a doctor if symptoms persist"）**不会**被误拦
-- `npm test` 全部通过
+**验收重点**：除了第 54 行那条规则和 334 行，提示词其他文字一字不动。实际回答效果**需实测**，可以用 `eval/answer-accuracy-test.md` 的 T01、T08 试
 
-### [x] 第 3 步｜A13：急症检测加马来语（只改后端）
+### [ ] 第 2 步｜每一步花多少秒（只改后端）
 
-**做法**：在 `safety/emergencyCheck.ts` 现有的规则里，**新增**马来语关键词，类别沿用现有的。至少覆盖：
-- 胸痛：`sakit dada`
-- 呼吸困难：`tak boleh bernafas`、`sesak nafas teruk`
-- 自伤：`bunuh diri`、`nak mati`
-- 中风：`mulut senget`、`cakap pelat tiba-tiba`
-- 抽搐：`sawan`
-- 中毒或过量：`telan banyak ubat`、`minum racun`
-- 大出血：`darah tak berhenti`
-- 昏迷：`pengsan`、`tak sedar diri`
+**做法**：
+1. 新建 `src/services/stageTimer.ts`：
+   ```ts
+   export function createStageTimer(now: () => number = () => performance.now()) {
+     // mark(stage)：记录「距离上一次 mark」的毫秒数（四舍五入为整数）
+     // result()：回传 { [stage]: ms, total: ms }
+   }
+   ```
+2. `app.ts` 的 `handleChat`：开头建立 timer，依序 `mark`：
+   - `prepare`：读取或建立对话之后（约第 420 行之后）
+   - `emergencyCheck`：`checkEmergencyRisk` 之后
+   - `route`：`routeMedicalData` 之后
+   - `retrieve`：`getMedicalData` 之后（`direct_model` 没有这一段）
+   - `generate`：`generateHealthAnswer` 之后
+   - `safety`：安全检查之后
+   - `save`：`appendTurn` 之后
+   - 急症路径（`respondWithEmergency`）只记 `generate` 和 `save`
+3. 每次回传成功结果前：
+   - `console.log('[chat-timing]', JSON.stringify({ conversationId, route, ...timer.result() }))`，`route` 是路由名称，急症就写 `'emergency'`
+   - 在回应的 `data` 里加上 `timings: timer.result()`
 
-**完成标准**
-- 新增测试：上面每一类至少 1 句马来语会判定为急症，而且类别正确
-- 原有的急症测试全部通过（不准改原有规则）
-- `npm test` 全部通过
-- 【你做】请会马来语的人看一遍关键词（可以在第 7 步之前完成）
+**允许修改的现有测试**：无
 
-**验收重点**：`git diff` 里 `emergencyCheck.ts` 只有新增的行，原有的规则一行都没删改；马来语关键词不会误拦普通句子（例如只说「sakit kepala」头痛，不应判定为急症）
+**完成标准**：
+- 新增 `tests/stageTimer.test.ts`：注入假时钟（依次回传 0、120、450），`mark('a')`、`mark('b')` 后，`result()` 等于 `{ a: 120, b: 330, total: 450 }`
+- 新增 `tests/timing.test.ts`（supertest + 假的路由、资料和 Gemini）：`POST /api/chat` 回应的 `data.timings` 有 `route`、`generate`、`total`，而且都是 ≥ 0 的数字
+- 后端 `npm test` 全部通过，`npm run build` 没有错误
 
-### [x] 第 4a 步｜多对话：建表 SQL
+**验收重点**：日志和 `timings` 里只有数字、对话 ID、路由名称，**没有用户的消息内容**
 
-**做法**：新增 `consultation-backend/sql/001_conversations.sql`，内容如下。`user_id` 的类型必须和 `public.users.id` 一致；下面假设是 `uuid`，执行前先在 Supabase 确认。
+### [ ] 第 3 步｜Waze 导航（只改前端）
 
-```sql
-create table public.conversations (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
-  title text not null,
-  active_category text,
-  active_emergency jsonb,
-  topic_messages jsonb not null default '[]'::jsonb,
-  last_evidence jsonb not null default '[]'::jsonb,
-  last_search_queries jsonb not null default '[]'::jsonb,
-  message_count integer not null default 0,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create index conversations_user_updated_idx on public.conversations (user_id, updated_at desc);
-create index conversations_updated_idx on public.conversations (updated_at);
+**问题**：`map/MapPanel.tsx` 第 51 行的 `directionsUrl` 只有 Google Maps，但马来西亚很多人用 Waze
 
-create table public.conversation_messages (
-  id uuid primary key default gen_random_uuid(),
-  conversation_id uuid not null references public.conversations(id) on delete cascade,
-  role text not null check (role in ('user', 'assistant')),
-  content text not null,            -- 给 AI 看的纯文字（AI 回答用 formatAnswerForHistory 转换）
-  answer jsonb,                     -- AI 的完整结构化回答，前端还原显示用
-  sources jsonb,                    -- 参考资料列表
-  is_emergency boolean not null default false,
-  map_care_level text check (map_care_level in ('hospital', 'clinic')),  -- 第 6 步使用
-  use_for_context boolean not null default true,  -- false = 安全检查没通过的兜底回答，不交给 AI
-  created_at timestamptz not null default now()
-);
-create index conversation_messages_conv_created_idx on public.conversation_messages (conversation_id, created_at);
+**做法**：
+1. 新建 `src/map/links.ts`，把 `directionsUrl` 从 `MapPanel.tsx` 搬过来，并新增：
+   ```ts
+   export function wazeUrl(p: { latitude: number; longitude: number }) {
+     return `https://waze.com/ul?ll=${p.latitude}%2C${p.longitude}&navigate=yes`
+   }
+   ```
+2. `MapPanel.tsx` 改成从 `./links` import；在地点卡片（约第 473 行）和选中地点的详情（约第 538 行）的 Google Maps 按钮旁边，各加一个 Waze 按钮（`target="_blank" rel="noopener noreferrer"`，样式跟旁边的按钮一致）
+3. `i18n.ts`：新增 `navigateWaze`（中文和英文都写「Waze」）
 
--- 后端用 postgres 身份连接，不受 RLS 影响；开启 RLS 是为了挡住 Supabase 公开接口的访问
-alter table public.conversations enable row level security;
-alter table public.conversation_messages enable row level security;
-```
+**允许修改的现有测试**：无
 
-**完成标准**
-- SQL 文件已建立
-- 【你做】在 Supabase 的 SQL Editor 执行成功；Table Editor 里能看到两张表，并标示 RLS 已开启
+**完成标准**：
+- 新增 `src/map/links.test.ts`：`wazeUrl({ latitude: 3.139, longitude: 101.6869 })` 等于 `'https://waze.com/ul?ll=3.139%2C101.6869&navigate=yes'`；`directionsUrl` 的结果和搬家前一样
+- 前端 `npm test` 全部通过，`npm run build` 没有错误
 
-**验收重点**：SQL 要和上面的内容一致（两张表都开启 RLS、都有 `on delete cascade`）；`user_id` 的类型要和 `public.users.id` 一致；这一步只新增 SQL 文件，不能改任何代码
+**验收重点**：【你做】用手机点一次 Waze 按钮，确认能打开 Waze 并开始导航
 
-### [x] 第 4b 步｜多对话：存取数据的代码（只改后端）
+### [ ] 第 4 步｜复制、分享回答（只改前端）
 
-**做法**
-1. 新建 `src/services/conversationRepository.ts`，定义接口（全部 async）：
-   - `listByUser(userId)`：返回 `[{ id, title, messageCount, createdAt, updatedAt }]`，按 `updatedAt` 从新到旧，不含过期的
-   - `get(id, userId)`：返回对话状态（标题、activeCategory、activeEmergency、topicMessages、lastEvidence、lastSearchQueries、messageCount、updatedAt）；不存在、不属于此用户、已过期，都返回 `null`
-   - `createIfUnderLimit(userId, title)`：用户的有效对话少于 3 个才建立，否则返回 `null`。用一条 SQL 完成：`insert ... select ... where (select count(*) ...) < 3`
-   - `getContextHistory(id, limit = 20)`：返回最近 20 条 `use_for_context = true` 的消息，格式是 `{ role, content }`，按时间从旧到新
-   - `getMessages(id, userId)`：返回全部消息（含 answer、sources、isEmergency、mapCareLevel、createdAt），供前端显示；不属于此用户就返回 `null`
-   - `appendTurn({...})`：在**一个 transaction** 里写入用户消息和 AI 消息，`message_count + 2`，更新 `updated_at` 和状态字段
-   - `delete(id, userId)`：删除成功返回 `true`；不属于此用户就返回 `false`
-   - `deleteExpired()`：删除所有 `updated_at` 早于 30 天前的对话
-2. 两种实现：
-   - `createMemoryConversationRepository()`：存在内存，给测试用，也给没有 `DATABASE_URL` 的本地开发用
-   - `createPgConversationRepository()`：仿照 `userRepository.ts` 的写法
-3. 把 `conversationStore.ts` 里 `saveTurn` 计算新状态的逻辑（activeCategory、topicMessages、lastEvidence、activeEmergency、lastSearchQueries）抽成纯函数 `nextConversationState(existing, turn)`，两种实现都用它。`formatAnswerForHistory` 保留
-4. 常量：`MAX_CONVERSATIONS_PER_USER = 3`、`MAX_MESSAGES_PER_CONVERSATION = 100`、`CONVERSATION_TTL_DAYS = 30`、`CONTEXT_HISTORY_LIMIT = 20`
+**做法**：
+1. 新建 `src/chat/answerText.ts`：`formatAnswerAsText(answer: HealthAnswer, t: Translation): string`
+   - 依序输出：摘要、可能原因、建议、什么时候要看医生、免责声明，区块标题沿用 `AssistantMessage.tsx` 现在用的 i18n 文字
+   - 去掉 Markdown 的 `**`
+   - `urgency === 'emergency'` 时，开头加上新的 `t.emergencyCallText`（「⚠️ 紧急情况请立即拨打 999」）
+   - 最后一行加 `t.shareFooter`（「— 来自 Medora AI，仅供参考，不能替代医生诊断」）
+2. `chat/AssistantMessage.tsx`：已经生成完毕的回答下方加一排操作按钮：
+   - **复制**：`navigator.clipboard.writeText(text)`，成功后按钮文字显示「已复制」2 秒
+   - **分享**：有 `navigator.share` 就用 `navigator.share({ text })`；没有就开新分页到 `https://wa.me/?text=${encodeURIComponent(text)}`
+   - 欢迎消息和还在生成中的回答不显示这排按钮
+3. `components/Icon.tsx`：没有 `copy`、`share` 图标就新增
+4. `i18n.ts`：新增 `copyAnswer`、`copied`、`shareAnswer`、`shareFooter`、`emergencyCallText`（中文和英文）
 
-**完成标准**：新增 `tests/conversationRepository.test.ts`，用内存实现验证：
-- 第 4 个对话 `createIfUnderLimit` 返回 `null`；删掉一个后可以再建
-- `getContextHistory` 只回最近 20 条，并跳过 `use_for_context = false` 的消息
-- 过期对话：`listByUser` 和 `get` 都看不到，`deleteExpired` 会删掉（测试里用可注入的「现在时间」模拟）
-- 用户 B 对用户 A 的对话执行 `get`、`getMessages`、`delete`，分别得到 `null`、`null`、`false`
-- `nextConversationState` 的结果和原来 `saveTurn` 一致
-- `npm test` 全部通过，`npm run build` 没有类型错误
-- PG 实现不在单元测试里连真实数据库，留到第 7 步线上验证
+**允许修改的现有测试**：无
 
-**验收重点**：这一步还**不能**改 `app.ts` 的接口行为（那是 4c 的事），原有测试必须全部不动就通过；PG 实现的每条 SQL 都要带 `user_id` 条件，防止读到别人的对话；`appendTurn` 真的用了 transaction
+**完成标准**：
+- 新增 `src/chat/answerText.test.ts`：
+  - summary 是「常见于 **感冒后咳嗽**」时，输出不含 `**`，并包含摘要、每一条建议和 `shareFooter`
+  - `urgency: 'emergency'` 的输出第一行包含「999」
+- 新增 `src/chat/answerActions.test.tsx`：模拟 `navigator.clipboard`，点「复制」后，`writeText` 收到的文字包含摘要
+- 前端 `npm test` 全部通过，`npm run build` 没有错误
 
-### [x] 第 4c 步｜多对话：接口（只改后端）
+**验收重点**：急症回答复制出来的文字一定有 999；【你做】用手机试一次分享到 WhatsApp
 
-**已实现**（2026-11-05，后端 51 个测试全部通过）：
-- 新增会话管理 REST 接口：`GET /api/conversations`（获取对话列表，上限 3 个，每小时节流清理过期对话）、`GET /api/conversations/:id`（获取对话详情与全部历史消息，跨用户或过期返回 404）、`DELETE /api/conversations/:id`（删除对话，跨用户返回 404，成功返回 204）。
-- 对话上限与额度保护：在调用 Gemini 模型之前完成拦截，满 3 个新对话返回 409 `CONVERSATION_LIMIT_REACHED`，达到 100 条消息返回 409 `CONVERSATION_FULL`，不浪费模型额度。
-- 历史上下文由后端安全接管（忽略客户端 `history` 传参，由 `getContextHistory` 供给），各轮次（含急症与兜底）统一通过 `appendTurn` 写入存储库。
-- 彻底移除旧的 `ConversationStore` 类，并将 `createApp` 依赖完整切换为 `conversationRepository`。
+### [ ] 第 5 步｜参考资料显示来源机构（两边都改，小）
 
-**做法**
-1. `createApp` 的依赖：`conversationStore` 改成 `conversationRepository`。没有注入时，有 `DATABASE_URL` 就用 PG 实现，否则用内存实现并 `console.warn` 一次
-2. 新接口（全部 `requireAuth`）：
-   - `GET /api/conversations` → `200 { conversations: [...], limit: 3 }`
-   - `GET /api/conversations/:id` → `200 { conversation: { id, title, messageCount }, messages: [...] }`；不是本人的就回 `404 { error: { code: 'CONVERSATION_NOT_FOUND' } }`
-   - `DELETE /api/conversations/:id` → `204`；不是本人的就回 `404`
-3. `POST /api/chat` 和 `/api/chat/stream` 的改动：
-   - **没给 `conversationId`**：用 `createIfUnderLimit` 建新对话（标题取消息前 15 个字）。满 3 个就回 `409 { error: { code: 'CONVERSATION_LIMIT_REACHED', message: '对话已满（最多 3 个），请先删除一个。' } }`
-   - **给了 `conversationId`**：用 `get` 读取，不是本人的或已过期就回 `404 CONVERSATION_NOT_FOUND`。`messageCount >= 100` 就回 `409 { error: { code: 'CONVERSATION_FULL', message: '这个对话已满 100 条，请开新对话。' } }`
-   - 上面这些检查都要在**调用 Gemini 之前**做，不浪费额度
-   - 给 AI 的历史改用 `getContextHistory`，**忽略请求里的 `history` 字段**（字段仍可接收，避免旧前端出错）
-   - 路由上下文继续传 `previousSearchQueries: conversation.lastSearchQueries`（第 1 步的功能不能丢）
-   - 每一轮（包括急症回答和兜底回答）都要 `appendTurn`；兜底回答的 `use_for_context = false`
-   - 回应里继续返回 `conversationId`
-   - `GET /api/conversations` 和发消息时调用 `deleteExpired()`，用内存时间戳限制**每小时最多执行一次**
-4. 删除旧的 `ConversationStore` 类（第 4b 步已经把逻辑抽出来）
+**问题**：回答下方已经有参考资料清单（`AssistantMessage.tsx` 约第 177–190 行），但只显示文章标题，用户看不出来是 NHS 还是 MedlinePlus
 
-**⚠️ 允许修改的现有测试（行为有意改变，已经用户同意）**：`tests/app.test.ts` 里这两个：
-- `returns the structured answer from the model service`：改成不带 `conversationId`，并断言 `conversationId` 是服务器生成的；断言 `history` 来自服务器而不是请求。回答结构的断言要保留
-- `does not let one user continue another user's conversation`：改成断言 intruder 拿到 **404**，而且 Gemini 没被调用。「看不到别人对话」的意图要保留
+**做法**：
+1. 后端 `app.ts` 约第 572 行，`sources` 的 `.map` 改成 `({ title: item.title, url: item.url, provider: item.provider })`
+2. 后端 `conversationRepository.ts`：`ConversationMessageRecord.sources` 和 `AppendTurnInput.sources` 的类型加上可选的 `provider?: string`（`sources` 存成 jsonb，**不用改 SQL**）
+3. 前端 `services/chatService.ts`：`Source` 加 `provider?: string`
+4. 前端 `AssistantMessage.tsx`：每个来源前面显示机构名称标签。对应表：`medlineplus` → MedlinePlus、`openfda` → OpenFDA、`rxnorm` → RxNorm、`kkmnow` → KKMNow、`nhs` → NHS、`icd11` → WHO ICD-11。旧消息没有 `provider` 的，就不显示标签
 
-除了这两个，**其他现有测试一律不准改**。
+**允许修改的现有测试**：无
 
-**完成标准**：新增 `tests/conversations.test.ts`（supertest + 内存实现 + 假的 Gemini），验证：
-- 不带 ID 发消息会建立对话，`GET /api/conversations` 能看到，标题是前 15 个字
-- 第 4 个新对话回 409 `CONVERSATION_LIMIT_REACHED`，而且 Gemini **没被调用**
-- 第 101 条回 409 `CONVERSATION_FULL`，而且 Gemini 没被调用
-- 第二轮发给 Gemini 的 `history` 包含第一轮的内容
-- 读、续写、删除别人的对话都回 404
-- 删除后再 `GET` 回 404
-- `npm test` 全部通过，`npm run build` 没有类型错误
-
-**验收重点**：`app.test.ts` 只改了允许的那 2 个测试，而且原本的意图还在；409 和 404 的检查确实在调用 Gemini **之前**；第 1 步的 `previousSearchQueries` 还有传进路由；`/api/chat/stream` 也套用了同样的检查
-
-### [x] 第 5 步｜多对话：前端
-
-**已实现**（2026-11-05，前端 13 个测试、后端 51 个测试全部通过）：
-- 新建 `src/ConversationList.tsx` 组件并在电脑端 Aside 与手机端底部弹出抽屉分别呈现，包含标题、最后更新时间、数量计数、30 天自动清理提示。
-- 「新对话」按钮支持根据 3 个上限自动禁用并显示「已满 3/3」；支持 `window.confirm` 二次确认后调用 `DELETE /api/conversations/:id` 并同步更新列表与激活态。
-- 改造 `App.tsx` 与 `ChatPanel.tsx`：彻底移除 `sessionStorage` 与客户端 `history` 传送；根据 `conversationId` 调用 `GET /api/conversations/:id` 还原历史对话与结构化回答；错误码（409 上限、409 满 100 条、404 过期/不存在）友好提示。
-- `src/i18n.ts` 补充完整多对话中英双语文字。
-
-**做法**
-1. 新建 `src/ConversationList.tsx`：对话列表（标题 + 最后更新时间）、「新对话」按钮、每个对话的删除按钮、保存说明文字
-2. 放在哪：
-   - 电脑版：左侧 `aside` 里，`feature-nav-list` 的上面
-   - 手机版：底部弹出菜单（`mobile-bottom-sheet`）里
-3. `App.tsx`：管理 `conversations` 列表和 `activeConversationId`；登录后调用 `GET /api/conversations`；`ChatPanel` 的 `key` 改成 `activeConversationId ?? 'new'`，这样切换对话时会重新载入
-4. `ChatPanel.tsx`：
-   - **移除** sessionStorage 的保存和读取，以及 `storageKey` prop
-   - 新增 props：`conversationId?`、`onConversationChanged()`（建立、更新后通知 App 重新拉列表）
-   - 有 `conversationId` 时，用 `GET /api/conversations/:id` 载入消息并还原显示（`answer` 用原来的方式渲染）
-   - 发消息时**不再送 `history`**
-   - 处理错误码：
-     - `CONVERSATION_LIMIT_REACHED`：显示「已满」提示
-     - `CONVERSATION_FULL`：提示开新对话
-     - `CONVERSATION_NOT_FOUND`：通知 App 刷新列表，并切回新对话
-5. 「新对话」按钮：满 3 个时停用，文字显示「已满 3/3」
-6. 删除：先用 `window.confirm` 确认，再调用 `DELETE`；删的是当前对话就切回新对话
-7. `i18n.ts`：新增文字（中文和英文），包括新对话、已满、删除确认、保存说明、100 条已满、对话不存在
-
-**允许修改的现有测试**：`src/App.test.tsx` 里用到 `sessionStorage` 的部分，改成模拟 `/api/conversations` 接口。其他测试的意图要保留。
-
-**完成标准**
-- 前端测试新增：
-  - 显示对话列表
-  - 满 3 个时「新对话」按钮停用并显示「已满」
-  - 确认后会调用 `DELETE`
-  - 点选对话会调用 `GET /api/conversations/:id`
-  - 发消息的请求里没有 `history`
-- `npm test` 全部通过，`npm run build` 没有类型错误
-- 本地打开页面：刷新后对话还在；能看到保存说明
-
-**验收重点**：`App.test.tsx` 只改了 sessionStorage 相关的部分；所有新文字都有中文和英文；【你做】手机版和电脑版各打开一次，看对话列表的位置和「已满」显示
-
-### [x] 第 6 步｜A12：地图按病情推荐（两边都改）
-
-**已实现**
-- 后端 `services/geoapifyPlaces.ts`：支持 `careLevel: 'hospital' | 'clinic'`，对应 Geoapify 分类 `healthcare.hospital` 与 `healthcare.clinic_or_praxis,healthcare.pharmacy`，按类别返回 `type: 'hospital' | 'clinic' | 'pharmacy'` 并赋予缺省兜底名称。
-- 后端 `app.ts`：`/api/hospitals/nearby` 接收并校验 `careLevel`（非法回 400）；聊天接口依据路由与病情轻重判定 `mapCareLevel`（急症/高风险为 `'hospital'`，`medical_api` 且低/中风险为 `'clinic'`，其他为 `null`），存入 `conversation_messages.map_care_level` 并随聊天结果回传。
-- 前端 `ChatPanel`：聊天回答依据 `mapCareLevel` 动态展示「查看附近医院」或「查看附近诊所和药房」，点击带参回调 `onOpenMap(careLevel)`。
-- 前端 `App.tsx`：维护 `mapCareLevel` 状态；侧边选单直接打开默认 `'hospital'`，聊天卡片点击按实际级别传入。
-- 前端 `MapPanel`：接收 `careLevel` prop并在其变更时重新拉取周边机构，动态切换顶栏标题、列表标题，并对医院（红色）、诊所（天蓝色）、药房（翠绿色）使用区分标记与类别标签。
-- 前端 `i18n.ts`：完善诊所与药房、各机构类型的中英文双语对照。
-- 测试与验证：新增后端 `tests/geoapifyPlaces.test.ts`（4 个测试）及前端 `App.test.tsx` 针对 clinic 按钮的渲染测试。后端 55 个测试、前端 14 个测试全通，双端构建通过。
-
-**做法**
-1. 后端 `services/geoapifyPlaces.ts`：
-   - `NearbySearchInput` 加 `careLevel: 'hospital' | 'clinic'`
-   - `hospital` 用 `categories=healthcare.hospital`；`clinic` 用 `categories=healthcare.clinic_or_praxis,healthcare.pharmacy`
-   - 结果加 `type: 'hospital' | 'clinic' | 'pharmacy'`，依 `properties.categories` 判断；名称缺失时按类型给默认名
-2. 后端 `app.ts`：
-   - `/api/hospitals/nearby` 接收 `careLevel`；不传时默认 `'hospital'`，保持兼容；值不合法就回 400
-   - 聊天回应新增 `mapCareLevel`：
-     - 紧急程度 `high` 或 `emergency` → `'hospital'`
-     - 路由是 `medical_api`，而且紧急程度是 `low` 或 `medium` → `'clinic'`
-     - 其他情况 → `null`
-   - `mapCareLevel` 同时存进 `conversation_messages.map_care_level`
-3. 前端：
-   - `ChatPanel` 的 `onOpenMap` 改成 `onOpenMap(careLevel)`；有 `mapCareLevel` 的回答才显示按钮。`hospital` 显示「查看附近医院」，`clinic` 显示「查看附近诊所和药房」。取代原本只看 `urgency` 的判断
-   - `App.tsx` 保存 `mapCareLevel` 状态，从左侧选单直接打开地图时用 `'hospital'`
-   - `MapPanel` 新增 prop `careLevel`，变化时重新查询；标题和标记按类型显示
-   - `i18n.ts` 新增对应文字（中文和英文）
-
-**完成标准**
-- 后端新增测试：
-  - 用假的 `fetch` 确认 `clinic` 时 `categories` 参数是 `healthcare.clinic_or_praxis,healthcare.pharmacy`
-  - `careLevel` 不合法时回 400
-  - `medical_api` + `low` 的聊天回应 `mapCareLevel` 是 `'clinic'`
-- 前端新增测试：`mapCareLevel: 'clinic'` 的回答显示「查看附近诊所和药房」
+**完成标准**：
+- 后端新增 `tests/sources.test.ts`：假资料的 provider 是 `'nhs'` 时，回应 `data.sources[0].provider === 'nhs'`
+- 前端新增测试：`provider: 'nhs'` 的来源显示「NHS」；没有 provider 的来源照常显示，不出错
 - 两边 `npm test` 全部通过
 
-**验收重点**：不传 `careLevel` 时仍然只搜医院（旧行为不变）；打招呼或科普回答**不会**出现地图按钮；【你做】打开页面，确认轻症显示诊所和药房、急症显示医院
+**验收重点**：旧对话（没有 provider 的来源）载入后显示正常
 
-### [x] 第 7 步｜部署和线上验证
+### [ ] 第 6 步｜重新回答（两边都改）
 
-**已完成**（2026-11-06）：Supabase 已执行建表 SQL；推送前后端测试（55 + 14）和双端编译全部通过；已推送到 GitHub（`c539bf7`）部署；由用户确认完成
+**做法（后端）**：
+1. `conversationRepository.ts`：接口新增 `popLastTurn(id: string, userId: string): Promise<{ userMessage: string } | null>`
+   - 在一个 transaction 里删除最后两条消息（必须依次是 assistant 和它前面的 user），`message_count - 2`
+   - 回传被删除的那句用户消息
+   - 不属于此用户、没有完整的一轮，都回传 `null`
+   - 对话状态（activeCategory 等）**不回滚**，这是已接受的取舍
+   - 内存实现和 PG 实现都要做
+2. `schemas/chat.ts`：`ChatRequest` 加可选的 `regenerate?: boolean`，验证必须是布尔值
+3. `app.ts` 的 `handleChat`，在读取对话之后、调用 Gemini 之前：
+   - `regenerate: true` 但没有 `conversationId` → `400 INVALID_CHAT_REQUEST`
+   - 调用 `popLastTurn`，得到 `null` → `409 { code: 'NOTHING_TO_REGENERATE', message: '没有可以重新回答的内容。' }`
+   - 成功：用**被删除的那句用户消息**当作这次的 message（忽略请求里的 message），重新取得 `getContextHistory`，接着走正常流程（包括急症检测）
 
-- 先确认第 4a 步的 SQL 已在 Supabase 执行
-- 部署后端到 Render、前端到 Vercel（不需要新的环境变量）
-- **完成标准**（【你做】用手机试一次）：
-  - 线上能新建对话，刷新后还在，能删除
-  - 满 3 个时显示「已满」
-  - 轻症回答能打开「附近诊所和药房」，急症能打开「附近医院」
-  - Supabase Table Editor 里能看到新数据
+**做法（前端）**：
+1. `services/chatService.ts`：`ChatRequest` 加 `regenerate?: boolean`
+2. `chat/ChatPanel.tsx`：`sendMessage` 加第三个参数 `options?: { regenerate?: boolean }`；新增 `regenerateLast()`：从画面上移除最后一条 AI 回答，再用最后一句用户消息调用 `sendMessage(message, false, { regenerate: true })`
+3. `chat/AssistantMessage.tsx`：新增 prop `onRegenerate?: () => void`，有传才显示「重新回答」按钮（放在第 4 步那排按钮里）。`ChatPanel` 只传给**最后一条** AI 回答，正在生成时不传
+4. 失败时沿用现有的错误和「重试」逻辑：重试是把那句话当普通消息重新发送
+5. `i18n.ts`：新增 `regenerate`（「重新回答」/「Regenerate」）
 
-**验收重点**：这一步由你亲自验收；用两个不同账号试一次，确认 A 看不到 B 的对话
+**允许修改的现有测试**：无
+
+**完成标准**：
+- 后端新增 `tests/regenerate.test.ts`（内存实现 + 假的 Gemini）：
+  - 先聊两轮，再 `regenerate` → Gemini 收到的 message 是第二轮的用户消息，history 只有第一轮；完成后 `GET /api/conversations/:id` 仍然是 4 条消息
+  - 空对话 → `409 NOTHING_TO_REGENERATE`，Gemini **没被调用**
+  - 别人的对话 → `404`
+- 后端 `tests/conversationRepository.test.ts` **新增**（不改旧的）`popLastTurn` 的测试：正常删除、空对话回 `null`、别人的对话回 `null`
+- 前端新增测试：只有最后一条回答有「重新回答」按钮；点了之后请求带有 `regenerate: true` 和 `conversationId`
+- 两边 `npm test` 全部通过，`npm run build` 没有错误
+
+**验收重点**：`popLastTurn` 的 PG 实现用了 transaction，而且 SQL 带 `user_id` 条件；检查在调用 Gemini 之前就完成
+
+### [ ] 第 7 步｜删除账号（两边都改）
+
+**做法（后端）**：
+1. `auth/userRepository.ts`：接口新增 `deleteById(id: string): Promise<boolean>`。PG 实现：`delete from public.users where id = $1`。`conversations` 有 `on delete cascade`（`sql/001_conversations.sql` 第 8 行），对话会一起删除
+2. `conversationRepository.ts`：接口新增 `deleteAllForUser(userId: string): Promise<number>`（内存和 PG 都要做，PG：`delete from public.conversations where user_id = $1`）
+3. `app.ts`：把 `dependencies.userRepository ?? createPgUserRepository()` 提出来存成常量 `userRepository`，`/api/auth` 也改用它；新增 `app.delete('/api/account', requireAuth, ...)`：
+   - body 没有 `password` → `400 { code: 'PASSWORD_REQUIRED' }`
+   - 用 `userRepository.findByEmail(request.user.email)` 找到用户，找不到或 `id` 跟 `request.user.sub` 对不上 → `404`
+   - 用 `auth/password.ts` 的 `verifyPassword` 验证，错误 → `401 { code: 'WRONG_PASSWORD' }`，并用 `LoginRateLimiter`（key：`delete:${userId}`）计算失败次数；超过限制 → `429`
+   - 正确 → 先 `conversationRepository.deleteAllForUser(userId)`，再 `userRepository.deleteById(userId)` → `204`
+4. 已知限制：已经发出的 token 在过期前仍然有效，但账号和对话都不在了，之后的请求会失败。前端删除后会立刻清除 token
+
+**做法（前端）**：
+1. `workspace/Sidebar.tsx`：账号区（约第 143–156 行）的「退出登录」下面加一个「删除账号」按钮，用 tokens 里的危险色
+2. 新建 `src/workspace/DeleteAccountDialog.tsx`：
+   - 说明「账号和所有对话会永久删除，无法恢复」
+   - 密码输入框、取消和确认按钮；没输入密码时不能按确认
+   - 用 `authFetch` 调用 `DELETE /api/account`，body 是 `{ password }`
+   - `204` → 调用 `auth.ts` 的 `clearSession()`，回到首页
+   - `401` 显示「密码不正确」；`429` 显示「尝试太多次，请稍后再试」
+3. `i18n.ts`：新增对应文字（中文和英文）
+
+**允许修改的现有测试**：无
+
+**完成标准**：
+- 后端新增 `tests/account.test.ts`（内存的 users 和 conversations）：
+  - 密码正确 → `204`，用户和他的对话都不见了，**另一个用户的对话还在**
+  - 密码错误 → `401`，什么都没删除
+  - 没给密码 → `400`
+- 前端新增测试：没输入密码时确认按钮停用；确认后调用 `DELETE /api/account`，然后回到首页
+- 两边 `npm test` 全部通过，`npm run build` 没有错误
+
+**验收重点**：PG 的 `delete` 一定带 `where id = $1`；密码错误时**绝对不能**删除任何东西
+
+### [ ] 第 8 步｜就诊摘要（两边都改）
+
+**做法（后端）**：
+1. `geminiHealthConsultation.ts`：把 `fallbackModels` 和 `isRetriableModelError` 改成 `export`，供下面共用
+2. 新建 `src/services/caseSummary.ts`：
+   - 类型：
+     ```ts
+     export interface CaseSummary {
+       chiefComplaint: string        // 主要问题
+       symptoms: string[]            // 症状
+       duration: string              // 持续多久
+       medications: string[]         // 用过的药
+       allergies: string[]           // 过敏
+       relevantHistory: string[]     // 相关病史
+       aiAssessment: string[]        // AI 曾给出的可能方向
+       redFlags: string[]            // 需要注意的危险信号
+       questionsForDoctor: string[]  // 可以问医生的问题
+     }
+     ```
+   - `export function isCaseSummary(value: unknown): value is CaseSummary`
+   - `export function createCaseSummarizer(options?: { apiKey?: string })`，回传 `summarizeCase({ messages, language, purpose }): Promise<CaseSummary>`
+     - `messages: Array<{ role: 'user' | 'assistant'; content: string }>`
+     - `language: 'zh' | 'en'`（第 11 步加 `'ms'`）
+     - `purpose: 'visit' | 'memory'`
+   - 用 `responseJsonSchema` 要求 Gemini 回传上面的结构；失败时依次换用 `fallbackModels`
+   - 提示词重点：
+     - 只整理**用户明确说过的内容**，没提到的就填空字符串或 `[]`，绝不推测
+     - `aiAssessment` 只总结 AI 在对话里**说过的**可能方向
+     - `purpose: 'visit'` 用指定语言写，给医生看，要简洁
+3. `app.ts`：
+   - 依赖新增 `summarizeCase?`（测试可以注入）
+   - 新增 `POST /api/conversations/:id/visit-summary`（`requireAuth`），body 是 `{ language }`：
+     - `get` 不到 → `404 CONVERSATION_NOT_FOUND`
+     - `getMessages` 里没有用户消息 → `409 { code: 'NOTHING_TO_SUMMARIZE' }`
+     - 先 `chatRateLimiter.consume(userId)`，超过限制 → `429`
+     - 把全部消息的 `content` 交给 `summarizeCase`（`purpose: 'visit'`）→ `200 { summary, generatedAt }`
+     - Gemini 失败 → `502 AI_MODEL_UNAVAILABLE`
+   - **不存进数据库**
+
+**做法（前端）**：
+1. 新建 `src/services/visitSummaryService.ts`：`requestVisitSummary(conversationId, language)`
+2. `chat/ChatToolbar.tsx`：加「就诊摘要」按钮，当前对话有至少 1 条用户消息时才能按
+3. 新建 `src/chat/VisitSummaryDialog.tsx`：
+   - 读取中显示载入状态
+   - 依序显示各区块，空的区块不显示
+   - 顶部提示「由 AI 根据对话整理，可能有遗漏或错误，就诊前请自行核对」，底部显示生成日期
+   - 按钮：**打印**（`window.print()`，加打印用的 CSS，打印时只显示摘要内容）、**复制**（纯文字）
+4. `i18n.ts`：新增对应文字（中文和英文）
+
+**允许修改的现有测试**：无
+
+**完成标准**：
+- 后端新增 `tests/caseSummary.test.ts`：`isCaseSummary` 对缺少字段、类型错误的对象回传 `false`，对完整的对象回传 `true`
+- 后端新增 `tests/visitSummary.test.ts`（假的 summarizer）：
+  - 本人的对话 → `200`，回传 summary
+  - 别人的对话 → `404`
+  - 空对话 → `409 NOTHING_TO_SUMMARIZE`，summarizer **没被调用**
+- 前端新增测试：点「就诊摘要」→ 调用对应接口 → 画面显示 `chiefComplaint` 的文字和 AI 提示
+- 两边 `npm test` 全部通过，`npm run build` 没有错误
+
+**验收重点**：提示词有「不得推测」的规定；摘要没有存进数据库；打印时只印出摘要；【你做】实际生成一次，看看内容是否忠于对话
+
+### [ ] 第 9 步｜病情摘要记忆（只改后端，含 SQL）
+
+**做法**：
+1. 新增 `consultation-backend/sql/002_case_memory.sql`：
+   ```sql
+   alter table public.conversations
+     add column if not exists case_summary jsonb,
+     add column if not exists case_summary_upto integer not null default 0;
+   ```
+2. `conversationRepository.ts`：
+   - `ConversationState` 加 `caseSummary: CaseSummary | null` 和 `caseSummaryUpto: number`，`get` 要读出来
+   - 接口新增 `saveCaseSummary(id: string, summary: CaseSummary, upto: number): Promise<void>`（内存和 PG 都要做）
+3. `app.ts`：新增函数 `maybeUpdateCaseMemory(conversationId, userId)`，在**回答送出之后**调用，不 `await`，错误只 `console.error`：
+   - 重新 `get` 对话；只有 `messageCount > CONTEXT_HISTORY_LIMIT`，而且 `messageCount - caseSummaryUpto >= 10` 时才继续
+   - `cutoff = messageCount - CONTEXT_HISTORY_LIMIT`；取 `getMessages` 的前 `cutoff` 条
+   - `summarizeCase({ messages, language: 'en', purpose: 'memory' })`，然后 `saveCaseSummary(id, summary, cutoff)`
+   - 用一个内存里的 `Set<string>` 防止同一个对话同时生成两次
+4. `geminiHealthConsultation.ts`：
+   - `HealthConsultationInput` 加 `caseMemory?: CaseSummary`
+   - 把组合用户消息内容的逻辑（约第 324 行）抽成 export 的纯函数 `buildUserContent(input)`
+   - 有 `caseMemory` 时，在 evidence 前面加上「[早前对话的病情摘要（超出最近 20 条的内容）]」区块，内容是把 CaseSummary 的非空字段列出来
+5. `app.ts`：除了 `direct_model`，所有调用 `generateHealthAnswer` 的地方（包括急症）都传 `caseMemory: activeConversation?.caseSummary ?? undefined`
+
+**允许修改的现有测试**：无
+
+**完成标准**：
+- 新增 `tests/caseMemory.test.ts`（内存实现 + 假的 summarizer + 假的 Gemini）：
+  - 对话不到 20 条时，summarizer **没被调用**
+  - 聊到 11 轮（22 条）后，summarizer 被调用 1 次，收到的是最早的 2 条消息
+  - 下一轮调用 Gemini 时，输入带有 `caseMemory`
+  - summarizer 出错时，聊天回应仍然是 `200`
+- 新增 `buildUserContent` 测试：有 `caseMemory` 时包含病情摘要区块，没有时不包含
+- 后端 `npm test` 全部通过，`npm run build` 没有错误
+- 【你做】在 Supabase 的 SQL Editor 执行 `002_case_memory.sql`（**第 12 步部署之前一定要做**）
+
+**验收重点**：摘要是在回答送出之后才生成的，不拖慢回答；超过 20 条后才会多调用 Gemini，而且每 10 条最多一次
+
+### [ ] 第 10 步｜语音输入（只改前端）
+
+**做法**：
+1. 新建 `src/types/speech.d.ts`：声明最少需要的 `SpeechRecognition` 类型（不加新套件）
+2. 新建 `src/chat/useSpeechInput.ts`（React hook）：
+   - 检测 `window.SpeechRecognition ?? window.webkitSpeechRecognition`，回传 `{ supported, listening, start, stop, error }`
+   - 语言对应：`{ zh: 'zh-CN', en: 'en-US' }`（第 11 步加 `ms: 'ms-MY'`）
+   - `interimResults: true`；识别到的文字通过 callback 加进输入框
+   - 结束或出错时把 `listening` 设回 `false`
+3. `chat/ChatPanel.tsx`：输入框和发送按钮之间加麦克风按钮，**不支持的浏览器不显示**
+   - 录音中有明显的状态（用 tokens 的颜色和动画）
+   - 错误 `not-allowed` → 显示 `t.micPermissionDenied`；其他错误 → 显示 `t.micError`
+   - 按钮附近显示小字 `t.micPrivacyNote`（「语音会由浏览器的语音服务处理」）
+4. `i18n.ts`：新增 `micStart`、`micStop`、`micPermissionDenied`、`micError`、`micPrivacyNote`（中文和英文）
+
+**允许修改的现有测试**：无
+
+**完成标准**：
+- 新增 `src/chat/speechInput.test.tsx`（模拟 `window.webkitSpeechRecognition`）：
+  - 支持时显示麦克风按钮；不支持时不显示
+  - 中文界面点按钮后，`lang` 是 `'zh-CN'`
+  - 模拟识别结果后，文字出现在输入框
+  - 模拟 `not-allowed` 错误后，显示权限提示
+- 前端 `npm test` 全部通过，`npm run build` 没有错误
+- 【你做】实测电脑 Chrome、Android Chrome、iPhone Safari 各一次（各浏览器的支持程度**需实测**）
+
+**验收重点**：没有任何音频送到我们的后端；不支持的浏览器不会出现坏掉的按钮
+
+### [ ] 第 11a 步｜马来语：后端
+
+**做法**：
+1. `schemas/chat.ts`：`ChatLanguage` 改成 `'zh' | 'en' | 'ms'`；第 151 行改成接受 `'ms'`，其他值仍然当作 `'zh'`
+2. `geminiHealthConsultation.ts`：`language` 类型加上 `'ms'`；约第 296 行的 `languageRule` 新增 `ms` 分支，比照英文版的写法：
+   - 全部字段只能用自然的 Bahasa Melayu
+   - 急症开头：`"🚨 **Amaran Kecemasan Perubatan (nama keadaan)**: "`
+   - 免责声明以 `"🛡️ Penafian:"` 开头
+   - `medical_qa` 的结尾句也要翻成马来语
+3. `safety/emergencyCheck.ts`：
+   - `buildEmergencyStructuredAnswer`（第 345 行）新增马来语的固定模板
+   - 新增 `export function emergencyActionText(language)`，回传三种语言的「立即拨打 999」文字，原本的 `EMERGENCY_ACTION_TEXT` 保留为中文版本
+   - `app.ts` 用到 `EMERGENCY_ACTION_TEXT` 的地方（约第 476、648 行）改成 `emergencyActionText(language)`
+4. `safety/outputSafetyCheck.ts`：`createSafeFallbackAnswer`（第 57 行）和免责声明（约第 194、223 行）新增马来语
+5. `services/caseSummary.ts`：`language` 加上 `'ms'`
+
+**允许修改的现有测试**：无
+
+**完成标准**：
+- 新增 `tests/malay.test.ts`：
+  - `validateChatRequest({ message: 'x', language: 'ms' })` 的 language 是 `'ms'`
+  - `buildEmergencyStructuredAnswer(..., 'ms')` 的 summary 包含「999」，而且**没有中文字**（用 `/[一-鿿]/` 检查）
+  - `createSafeFallbackAnswer('ms')` 没有中文字
+  - `emergencyActionText('ms')` 包含「999」
+- 原有测试全部通过（中文和英文的行为不变）；`npm run build` 没有错误
+- 【你做】请会马来语的人看急症模板和免责声明
+
+**验收重点**：中文和英文的输出完全不变；马来语的急症模板一定有 999
+
+### [ ] 第 11b 步｜马来语：前端
+
+**做法**：
+1. `i18n.ts`：`Language` 改成 `'zh' | 'en' | 'ms'`；新增 `ms` 区块，**key 必须和 `zh` 完全一样**。用 TypeScript 强制检查，例如先把 zh 抽成常量 `const zh = {...}`，再写 `ms: { ... } satisfies typeof zh`
+2. `landing/landingCopy.ts`：新增 `ms`
+3. `components/LangToggle.tsx`：改成三个按钮：中文 / EN / BM
+4. 把 `App.tsx`、`chat/ChatPanel.tsx`、`landing/LandingPage.tsx`、`map/MapPanel.tsx`、`services/chatService.ts` 里所有 `lang === 'zh' ? … : …` 的写死文字，改成 i18n 的 key。可以用这个指令找出来：`grep -rn "=== 'zh'" src --include=*.tsx --include=*.ts`
+5. `services/chatService.ts`：`ChatRequest.language` 的类型改成 `Language`
+6. `chat/useSpeechInput.ts`：语言对应加上 `ms: 'ms-MY'`
+7. `App.tsx`：语言切换时设定 `document.documentElement.lang`（`zh-CN` / `en` / `ms`）；如果语言有存在 localStorage，读取时要接受 `'ms'`
+
+**允许修改的现有测试**：无
+
+**完成标准**：
+- 新增 `src/i18n.test.tsx`：点「BM」后，欢迎标题变成 `translations.ms.welcomeTitle`；之后发出的聊天请求 `language` 是 `'ms'`
+- `grep -rn "=== 'zh' ?" src --include=*.tsx --include=*.ts`（不含测试文件）找不到任何结果
+- 前端 `npm test` 全部通过，`npm run build` 没有错误
+
+**验收重点**：每个页面（首页、登录、问诊、地图、就诊摘要、删除账号）都切到 BM 看一次，没有残留的中文或英文；【你做】请会马来语的人看界面文字
+
+### [ ] 第 12 步｜部署和线上验证
+
+- **先**在 Supabase 执行 `sql/002_case_memory.sql`（第 9 步）
+- 推送到 GitHub，等 Render 和 Vercel 部署完成（不需要新的环境变量；想调整回答长度上限，可以在 Render 设定 `GEMINI_MAX_OUTPUT_TOKENS`）
+- **完成标准**（【你做】用手机试）：
+  - [ ] 问一个模糊的问题，AI 会说不确定，并请你补充信息
+  - [ ] 地图上的 Waze 按钮能打开 Waze
+  - [ ] 回答可以复制、分享到 WhatsApp、重新回答
+  - [ ] 参考资料显示机构名称
+  - [ ] 就诊摘要可以生成和打印
+  - [ ] 语音输入可以用（或在不支持的浏览器上不显示按钮）
+  - [ ] 切到 BM，界面和回答都是马来语；急症回答有 999
+  - [ ] 用一个**测试账号**删除账号，确认登不进去，另一个账号的对话不受影响
+  - [ ] Render 日志里看得到 `[chat-timing]`
+
+**验收重点**：这一步由你亲自验收
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 6 步已完成（后端支持 careLevel 筛选、分类适配、chat mapCareLevel 判断及 55 个后端测试；前端支持按病情跳转、clinic/hospital 动态标题与标记颜色、中英双语、14 个前端测试及双端 build 全过）
-- **第 7 步已完成**（2026-11-06）：已部署上线，由用户确认完成。**本计划全部完成。**
-- **下一步**：从「8. 暂不做」里挑下一批，重新规划
+- **当前进度**：规划已确认，还没开始写代码
+- **下一步**：第 1 步（调高回答长度上限 + 提示词放宽）
 
 ## 6. 分工
 
 - **【你做】**
-  - 第 4a 步：确认 `users.id` 的类型，并执行建表 SQL
-  - 第 3 步：请会马来语的人看急症关键词
-  - 第 7 步：部署后用手机试一次
+  - 第 9 步：在 Supabase 执行 `002_case_memory.sql`
+  - 第 11 步：请会马来语的人看马来语文字
+  - 第 3、4、8、10、12 步：用手机实测
 - **【AI做】**：写代码、写测试、每完成一步更新本文件进度
-- **【一起】**：第 5 步完成后，看界面样式要不要调整
+- **【一起】**：第 7、8、10 步新界面的样式，看要不要调整
 
 ## 7. 关键假设和查证结果
 
-- ✅ **已查证（2026-11-05，Geoapify Places 官方文档）**：分类名 `healthcare.hospital`、`healthcare.clinic_or_praxis`、`healthcare.pharmacy` 都存在
-- Supabase 免费档 500 MB 够用：按每人最多 3 个对话 × 100 条、约 1.5 MB 估算，**需实测**
-- Supabase 免费项目闲置太久可能会被暂停，具体规则**需要查证**
-- 假设 `public.users.id` 是 `uuid`（第 4a 步前确认）
-- 自动删除只在有人使用时才会执行；完全没人用的时候不会清理（可以接受）
-- 马来语关键词由 AI 先写，需要有人看一遍
+- ✅ **已查证（2026-11-06，Waze 官方开发者文件）**：导航链接格式是 `https://waze.com/ul?ll=纬度,经度&navigate=yes`
+- ✅ **已确认（代码）**：`conversations.user_id` 有 `on delete cascade`，删除用户会连带删除对话
+- ✅ **已确认（代码）**：Google Maps 导航按钮和参考资料清单，新设计已经有了
+- 浏览器语音识别：各浏览器的支持程度，以及马来语 `ms-MY` 的识别效果**需实测**；Chrome 的语音识别会把声音送到 Google 处理，具体做法**需要查证**
+- 回答长度上限调到 3000 后，回答速度和额度消耗的变化**需实测**
+- 病情摘要记忆和就诊摘要会多用 Gemini 额度，免费档够不够**需实测**
+- 马来语由 AI 翻译，需要人工审核
 
 ## 8. 暂不做（以后再讨论）
 
-- A2 调高回答长度上限｜A4 提示词放宽「必须下判断」｜A5 回答标注参考资料
-- A6 换更强的模型（需实测）｜A8 整套马来语界面｜A9 医院筛选（公立/私立/急诊）
-- A10 常见问题缓存｜A11 更新 README｜A15 忘记密码
-- 病情摘要记忆（和「就诊摘要」功能一起做）
-- 回答准确度测试：题目已经准备在 `eval/answer-accuracy-test.md`，暂时不跑
+- **健康指南（下一批）**：第一版只做知识卡片，大约 20 张，中英马三语，内容写在文件里，不做视频。等这一批完成后再规划
+- 健康档案、上传照片、忘记密码、回答反馈 👍/👎、常见问题缓存、后台统计、换更强的模型、语音朗读回答、字体大小调节
+- 回答准确度测试：题目在 `eval/answer-accuracy-test.md`
 
 ## 9. 【执行限制】
 
-- 完成标准：<当前这一步在「4. 分步计划」里写的「完成标准」，例如第 2 步：「三种英文说法各至少 1 个例子会被拦下，正常英文回答不被误拦，`npm test` 全部通过」>，达到立即停止，不顺手优化别的
+- 完成标准：<当前这一步在「4. 分步计划」里写的「完成标准」，例如第 3 步：「`wazeUrl({ latitude: 3.139, longitude: 101.6869 })` 等于 `'https://waze.com/ul?ll=3.139%2C101.6869&navigate=yes'`，前端 `npm test` 全部通过」>，达到立即停止，不顺手优化别的
 - 范围：只看与问题直接相关的文件，不扫全项目，不用子代理
 - 次数：最多「修改 → 验证」2 轮；同一错误出现 2 次直接停
 - 禁止：为了通过而修改 / 删除 / 跳过测试，或降低验证标准
 - 停止时汇报：做了什么、当前证据、卡在哪、建议下一步（由我决定是否继续）
 
-> 补充：第 4c 步和第 5 步写明「允许修改」的测试，是因为行为被有意改变，不算违反「禁止修改测试」。除此之外的测试一律不准改。
+> 补充：这一批每一步的「允许修改的现有测试」都是「无」。新的测试一律放在**新文件**，或在现有测试文件里**新增**测试，不准改动旧测试。
 
 ## 10. 新对话开场白（开发用）
 
@@ -371,7 +514,7 @@ alter table public.conversation_messages enable row level security;
 - **流程**：开发对话做第 N 步 → 开一个**全新的**验收对话检查 → 用户看结论决定 → 通过就提交 → 下一步
 - **不通过**：把验收员列出的问题贴回开发对话修，修完再开一个新的验收对话检查（修的次数算在执行限制的「最多 2 轮」里）
 - **验收对话必须是全新的对话**，不能继承开发对话的记忆；能换模型就换成和开发不同的模型
-- **每一步验收通过后马上提交**，下一步的改动才不会和上一步混在一起
+- **每一步验收通过后马上提交**，下一步的改动才不会和上一步混在一起；**第 12 步之前不要推送**
 - 有界面的步骤，用户要亲自打开页面看一眼；涉及线上的步骤，用户要亲自试一次
 
 ### 验收开场白（把 N 换成步骤号）
