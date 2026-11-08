@@ -234,7 +234,27 @@
 
 **预计 Gemini 用量**：几百块，批量调用大约 **10～30 次**（实际以第 1 步查证的批量上限为准）
 
-### [ ] 第 4 步｜检索评估：先量好，再接进后端（只改 `rag-pipeline/`）
+### [x] 第 4 步｜检索评估：先量好，再接进后端（只改 `rag-pipeline/`）
+
+**实际做法与记录**：
+1. **新建 `rag-pipeline/evals/golden.jsonl`（共 40 题，用户已审核通过）**：
+   - **32 题有答案**：涵盖 6 份指南（`dengue` 6 题、`t2dm` 6 题、`hypertension` 5 题、`asthma` 5 题、`ckd` 5 题、`dyslipidaemia` 5 题），每题含 `id`、`question_zh`、`queries_en`（2 个英文查询词）、`expected`（`doc_id` + 页码范围）及 3 条 `key_facts`。
+   - **8 题无答案（`expected: []`）**：偏头痛、湿疹、胃食管反流、急性痛风、肺结核、尿道炎、骨质疏松症、重度抑郁症。
+2. **新建 `rag-pipeline/medora_rag/evals/retrieval_eval.py` 与 `rag-pipeline/tests/test_metrics.py`**：
+   - 将 80 个英文查询词通过 `gemini-embedding-001`（`RETRIEVAL_QUERY`，768 维 L2 归一化）分 4 批算好向量并缓存至 `rag-pipeline/evals/cache/query_embeddings.json`（已忽略不进 Git，二次重跑 0 次 API 调用）。
+   - 对 40 题分别运行 **Vector-Only（纯向量余弦相似度）**、**Keyword-Only（Postgres 全文搜索 `websearch_to_tsquery`）**、**Hybrid（RRF `match_cpg_chunks`）** 三种检索模式。
+3. **真实评估数字（见 `rag-pipeline/evals/reports/2026-11-08-retrieval.md`）**：
+   | 检索方式 | 有答案题 Hit@5 (32 题) | 有答案题 MRR@5 | 无答案题最高分 (8 题) |
+   |---|---:|---:|---:|
+   | **Vector-Only (Cosine)** | **0.9688** (31/32) | 0.8490 | 0.648822 |
+   | **Keyword-Only (FTS)** | **0.8438** (27/32) | 0.7135 | 0.000610 |
+   | **Hybrid (RRF)** | **0.9688** (31/32) | **0.9167** | 0.032522 |
+   - **混合检索（Hybrid RRF）的 Hit@5 = 0.9688（≥ 0.8 达标），MRR@5 = 0.9167**（比纯向量 MRR 提升 +0.0677，比纯关键词 Hit@5 提升 +12.5%）。
+   - 唯一未命中题目分析：`dyslipidaemia-02`（极高危患者 LDL-C <1.4 mmol/L 目标），黄金标准只标了第 20–22 页和第 72–74 页，但检索器排在第 1–3 名捞出的是同指南第 61 页（Table 12 高强度他汀剂量表）和第 68–69 页（第 9 章二级预防正文，同样明确写着 `Secondary Prevention: < 1.4 mmol/L and a 50% reduction`），未修改题目。
+4. **定下第 5 步后端检索参数**：
+   - **每次查询取几块（`match_count`）**：定为 **`3`**（Hybrid MRR@5 高达 0.9167，绝大多数命中块排在第 1～2 名，每个英文查询词取前 3 块再配合后端 `MAX_PER_PROVIDER = 4` 去重合并，既能完整覆盖核心证据又节省 prompt token）。
+   - **要不要设最低 RRF 分数门槛**：定为 **不设硬性 RRF 分数门槛（`none`）**。原因：`match_cpg_chunks` 的 RRF 分数由相对排名 `1/(60+rank)` 计算（只要有第 1 名向量结果且命中通用医学词如 `treatment`，RRF 分数即接近 `0.032`），无答案题最高 RRF 分数（`0.032522`）与有答案题最低分（`0.032002`）重叠；硬设阈值会误杀有效指南块。在后端多源架构中，`cpg` 与其余 6 个权威 API 并行返回，由问诊模型按相关性择优引用。
+5. **测试验证**：`cd rag-pipeline && python -m pytest` 共 20 项测试全部通过（含新增 `tests/test_metrics.py` 4 项指标单元测试）。
 
 **做法**：
 1. **出题**：新建 `rag-pipeline/evals/golden.jsonl`，共 **40 题**：
@@ -335,8 +355,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 3 步完成（2026-11-08），Supabase 建表、499 块切块 768 维向量化入库与 `match_cpg_chunks` 混合检索验证完成，等待验收
-- **下一步**：第 4 步（检索评估：先量好，再接进后端）
+- **当前进度**：第 4 步完成（2026-11-08），40 题黄金测试集检索评估完成（Hybrid RRF `Hit@5 = 0.9688`、`MRR = 0.9167`），已定下第 5 步参数（每次取 `3` 块、不设硬性 RRF 分数门槛），等待验收
+- **下一步**：第 5 步（后端接入 `cpg` 来源 + 前端标签）
 
 ## 6. 分工
 

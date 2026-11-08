@@ -62,7 +62,13 @@ python -m medora_rag.ingest
 ```
 *注：脚本仅对新增或 `content_hash` 发生变化的切块调用 Gemini embedding，未变化的切块将自动跳过。*
 
-### 4. 运行自动化测试
+### 4. 运行检索评估（Hit@5 / MRR）
+对 `evals/golden.jsonl` 的 40 道题目运行三种检索模式（Vector-Only、Keyword-Only、Hybrid RRF），查询向量缓存至 `evals/cache/query_embeddings.json`，报告输出至 `evals/reports/YYYY-MM-DD-retrieval.md`：
+```bash
+python -m medora_rag.evals.retrieval_eval
+```
+
+### 5. 运行自动化测试
 ```bash
 python -m pytest
 ```
