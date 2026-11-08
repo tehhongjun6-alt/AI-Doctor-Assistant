@@ -89,6 +89,7 @@ export default function App() {
   const [activeConversationId, setActiveConversationId] = useState<string>()
   const [chatHasUserMessages, setChatHasUserMessages] = useState(false)
   const [chatKey, setChatKey] = useState(0)
+  const [chatPrefill, setChatPrefill] = useState<{ text: string; nonce: number }>()
 
   const online = useOnline()
   const t = translations[lang]
@@ -192,6 +193,7 @@ export default function App() {
 
   function startNewChat() {
     if (conversations.length >= limit) return
+    setChatPrefill(undefined)
     setActiveConversationId(undefined)
     setChatHasUserMessages(false)
     setChatKey((k) => k + 1)
@@ -199,6 +201,7 @@ export default function App() {
   }
 
   function selectConversation(id: string) {
+    setChatPrefill(undefined)
     setActiveConversationId(id)
     setChatHasUserMessages(false)
     setChatKey((k) => k + 1)
@@ -306,6 +309,7 @@ export default function App() {
             onCanSummarizeChange={(can) => setChatHasUserMessages(can)}
             onOpenMap={openMapFromChat}
             lang={lang}
+            prefill={chatPrefill}
           />
         </div>
 
@@ -338,8 +342,10 @@ export default function App() {
           <GuidePanel
             lang={lang}
             onOpenMenu={() => setDrawerOpen(true)}
-            onAsk={() => {
-              /* 第 4 步接上：填入问诊输入框 */
+            onAsk={(topic) => {
+              // 留在当前对话，只填入问题，不自动发送
+              setChatPrefill({ text: topic.askPrompt[lang], nonce: Date.now() })
+              setSection('chat')
             }}
           />
         </div>

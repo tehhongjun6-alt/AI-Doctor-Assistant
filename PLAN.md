@@ -219,7 +219,7 @@
 - 在浏览器看过电脑版（4 栏、置中对话框）和手机版（375px：2 栏、全屏详情），截图正常
 - ⏳ 还差：【你做】电脑和手机各打开一次看样子
 
-### [ ] 第 4 步｜「问 Medora」按钮（只改前端）
+### [x] 第 4 步｜「问 Medora」按钮（只改前端）
 
 **做法**：
 1. `chat/ChatPanel.tsx`：`ChatPanelProps`（第 20–28 行）新增 `prefill?: { text: string; nonce: number }`。`prefill` 改变时（看 `nonce`），把 `text` 放进输入框（`setInput`）并把焦点移到输入框，**不要自动发送**
@@ -237,6 +237,12 @@
 
 **验收重点**：不会自动发送；对话满 3 个时也能正常填入
 
+**实际做法（2026-11-06，2026-11-08 已验收）**：
+- `ChatPanel.tsx`：新增 `prefill?: { text; nonce }`，`nonce` 变了就 `setInput(text)` 并把焦点移到输入框，不发送
+- `App.tsx`：新增 `chatPrefill` 状态；`GuidePanel` 的 `onAsk` 填入 `topic.askPrompt[lang]` 并切到问诊页，留在当前对话
+- 计划外的一点小改动：`startNewChat`、`selectConversation` 里会清掉 `chatPrefill`，避免开新对话 / 换对话时旧问题又被填进去
+- 测试：新增 `src/guide/askMedora.test.tsx`（填入内容等于中文 askPrompt、焦点在输入框、没有调用 `/api/chat`；对话满 3 个时也能填入）；`npm test` 15 个文件 71 个测试全过；`npm run build` 成功
+
 ### [ ] 第 5 步｜部署和线上验证
 
 - 推送到 GitHub，等 Vercel 部署完成（后端没有改，Render 不用动）
@@ -251,8 +257,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 1、2 步已提交；第 3 步已验收并提交
-- **下一步**：第 4 步（「问 Medora」按钮）
+- **当前进度**：第 1～4 步已验收并提交
+- **下一步**：第 5 步（推送、部署和线上验证）
 
 ## 6. 分工
 

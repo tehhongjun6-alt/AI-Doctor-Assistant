@@ -25,6 +25,8 @@ interface ChatPanelProps {
   onCanSummarizeChange?: (can: boolean) => void
   onOpenMap: (careLevel: CareLevel) => void
   lang: Language
+  /** 健康指南「问 Medora」：nonce 改变时把 text 填进输入框，不自动发送 */
+  prefill?: { text: string; nonce: number }
 }
 
 interface ChatError {
@@ -51,6 +53,7 @@ export default function ChatPanel({
   onCanSummarizeChange,
   onOpenMap,
   lang,
+  prefill,
 }: ChatPanelProps) {
   const t = translations[lang]
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -73,6 +76,14 @@ export default function ChatPanel({
   const abortRef = useRef<AbortController | null>(null)
   const nearBottomRef = useRef(true)
   const forceScrollRef = useRef(false)
+
+  // 健康指南「问 Medora」：只填入、移焦点，不发送
+  useEffect(() => {
+    if (!prefill) return
+    setInput(prefill.text)
+    inputRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill?.nonce])
   const baseTextRef = useRef('')
 
   const speech = useSpeechInput({
