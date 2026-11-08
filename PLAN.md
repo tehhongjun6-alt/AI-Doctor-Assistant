@@ -85,7 +85,27 @@
 
 ## 4. 分步计划
 
-### [ ] 第 1 步｜选资料、下载、建 Python 环境（只新增 `rag-pipeline/`）
+### [x] 第 1 步｜选资料、下载、建 Python 环境（只新增 `rag-pipeline/`）
+
+**实际做法与记录**：
+1. 新建 `rag-pipeline/` 目录结构：
+   - `pyproject.toml`：Python ≥ 3.11，配置依赖 `pymupdf>=1.25.0`、`google-genai>=1.0.0`、`psycopg[binary]>=3.2.0`、`python-dotenv>=1.0.0`，开发依赖 `pytest>=8.0.0`。
+   - `README.md`：详细记录虚拟环境创建、激活、依赖安装及各脚本运行指南。
+   - `.env.example`：提供 `GEMINI_API_KEY=` 与 `DATABASE_URL=`。
+   - `.gitignore`：加入 `data/raw/`、`data/chunks/`、`.env`、`.venv/`、`evals/cache/`、`__pycache__/` 等。
+2. 官网查证与下载源确认：
+   - 官方来源：马来西亚卫生部 MaHTAS 官方公开入口（`https://mymahtas2.moh.gov.my/files/...`）。
+   - 6 份最新版指南与 SHA-256：
+     - `dengue`: MANAGEMENT OF DENGUE IN ADULTS (FOURTH EDITION) (2026), 17.8MB, SHA256: `2e045e07c1ea995be841c48fcac687642c29d79f0ee04830afbe5b7bec54bc69`
+     - `t2dm`: CPG MANAGEMENT OF TYPE 2 DIABETES MELLITUS (6TH EDITION) (2020), 5.9MB, SHA256: `e5157717f79db75ea8a2de6f1f6bd18a3c86216ba824084a0b8cba06813f6b3b`
+     - `hypertension`: CPG MANAGEMENT OF HYPERTENSION (5TH EDITION) (2018), 2.0MB, SHA256: `ef5ceea4c50be2a88b80213b0a1c2c8a4ff57171737ea6a0e89e34a85aded2bb`
+     - `asthma`: CPG MANAGEMENT OF ASTHMA IN ADULTS (2024), 16.3MB, SHA256: `c1dce4b6907694b3138d0c348acf412df37d92bb3dc74166e18ffae2e2c84be7`
+     - `ckd`: CPG MANAGEMENT OF CHRONIC KIDNEY DISEASE (SECOND EDITION) (2018), 1.5MB, SHA256: `44f1023dd04c173227f5056fa8371b472829b1400cfa6780f76aac737ef9e1b3`
+     - `dyslipidaemia`: CPG MANAGEMENT OF DYSLIPIDEMIA (6TH EDITION) (2023), 15.8MB, SHA256: `5671aac1f4f9eeff47203208ef66a36db5fc2e285ebc105e2aed82bec366c981`
+3. 建立 `rag-pipeline/data/manifest.json`，完整记录 6 份指南信息。
+4. 编写 `rag-pipeline/medora_rag/download.py` 并执行下载与哈希校验；重跑幂等跳过验证通过。
+5. Python 环境确认：Python 3.14.6 安装 PyMuPDF 2.1 prebuilt wheel 正常运行。
+6. 测试验证：新增 `tests/test_manifest.py`（7 个测试全部通过）；后端 19 个测试套件（94 个测试）全部通过。
 
 **做法**：
 1. 新建 `rag-pipeline/`：
@@ -268,8 +288,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：规划已确认（2026-11-08），还没开始
-- **下一步**：第 1 步（选资料、下载、建 Python 环境）
+- **当前进度**：第 1 步完成（2026-11-08），6 份 MOH CPG 指南下载、校验与环境搭建完成，等待验收
+- **下一步**：第 2 步（PDF 转文字、切块）
 
 ## 6. 分工
 
