@@ -127,7 +127,31 @@
 
 **验收重点**：6 个网址都是官方网站、真的打得开；PDF 没有进 Git；Python 3.14 能不能装 pymupdf（不行就在 venv 用 3.12/3.13，写进 README）
 
-### [ ] 第 2 步｜PDF 转文字、切块（只改 `rag-pipeline/`）
+### [x] 第 2 步｜PDF 转文字、切块（只改 `rag-pipeline/`）
+
+**实际做法与记录**：
+1. 新建 `rag-pipeline/medora_rag/extract.py`：
+   - 使用 `pymupdf` 逐页提取文本并保留 1-based 页码（`PageData(page_number, text)`），清理特殊符号与多余空白。
+   - 实现 `remove_repeated_headers_footers`：自动统计并去除全书重复页眉页脚、独立页码行，以及章节连续页眉的重复项（保留首次出现以供章节识别）。
+2. 新建 `rag-pipeline/medora_rag/chunk.py`：
+   - 合并 MaHTAS 双行标题（如 `1.` + `INTRODUCTION`、`Appendix 5` + 标题），按章节标题分段。
+   - 自动跳过：封面、出版声明、前言（Foreword）、目录（Table of Contents）、委员会与审稿人名单（Development Group / Review Committee / External Reviewers / Expert Panel）、参考文献（References / Bibliography）、缩写表与致谢。
+   - 按句子与段落切块，控制每块 **300～500 个英文单词**（最后一块可短），相邻块保持约 **50 个单词**重叠，保留跨页页码范围 `page_start`～`page_end` 及 SHA-256 `content_hash`。
+3. 实际运行 6 份指南切块统计（输出至 `rag-pipeline/data/chunks/<doc_id>.jsonl`，已被 `.gitignore` 忽略）：
+   ```text
+   doc_id            Pages   Chunks   Avg Words  Min Words  Max Words
+   ------------------------------------------------------------------
+   dengue              144       66       423.8        226        500
+   t2dm                284      187       457.1        269        500
+   hypertension        160       78       436.2        246        500
+   asthma              112       51       444.5        323        500
+   ckd                  68       32       424.3        304        500
+   dyslipidaemia       121       85       406.9        284        500
+   ------------------------------------------------------------------
+   Total chunks across 6 guidelines: 499
+   ```
+   - 表格与排版观察：纯文本表格按单元格顺序提取成可读词句，未出现字符乱码；抽查 `dengue.jsonl` 的第 0、10、25 块对照原 PDF 对应页码（第 6-7 页、31-33 页、58-59 页），词汇吻合率均为 100.0%。
+4. 新增 `rag-pipeline/tests/test_chunk.py`（6 项单元测试），运行 `python -m pytest` 共 13 项测试全过。
 
 **做法**：
 1. `medora_rag/extract.py`：用 pymupdf 逐页取出文字，保留页码；去掉每页重复出现的页眉页脚
@@ -288,8 +312,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 1 步完成（2026-11-08），6 份 MOH CPG 指南下载、校验与环境搭建完成，等待验收
-- **下一步**：第 2 步（PDF 转文字、切块）
+- **当前进度**：第 2 步完成（2026-11-08），6 份指南提取与切块完成（共 499 块），等待验收
+- **下一步**：第 3 步（建数据库表、向量化入库）
 
 ## 6. 分工
 

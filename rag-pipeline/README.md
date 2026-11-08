@@ -49,8 +49,13 @@ python -m medora_rag.download
 ```
 *注：脚本具有幂等性。若文件已存在且 SHA-256 校验码一致，将自动跳过下载。*
 
-### 2. 运行自动化测试
+### 2. 提取 PDF 文本并切块
+将 6 份 PDF 去页眉页脚、按章节分段并切块（300～500 词，50 词重叠），输出至 `data/chunks/<doc_id>.jsonl`：
 ```bash
-pytest
+python -m medora_rag.chunk
 ```
-*或在激活的虚拟环境中运行：`python -m pytest`*
+
+### 3. 运行自动化测试
+```bash
+python -m pytest
+```
