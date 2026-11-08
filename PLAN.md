@@ -1,294 +1,314 @@
-# PLAN.md — Medora 健康指南（第一版）
+# PLAN.md — Medora 向量 RAG：马来西亚卫生部临床指南（第一版）
 
-> 规划日期：2026-11-06｜状态：规划已确认，尚未开始执行
+> 规划日期：2026-11-08｜状态：规划已确认，尚未开始执行
 > 之前的计划都已完成，存档在 `plans/` 文件夹
 >
-> **执行者须知**：每一步都写明了「改哪些文件、怎么做、完成标准」。**设计已经定好，照着做，不要自行改设计。** 如果发现计划和代码对不上，停下来汇报，不要自己发挥。**第 5 步之前不要推送**（推送会触发线上部署）。
+> **执行者须知**：每一步都写明了「改哪些文件、怎么做、完成标准」。**设计已经定好，照着做，不要自行改设计。** 如果发现计划和代码对不上，停下来汇报，不要自己发挥。**第 7 步之前不要推送**（推送会触发线上部署）。
 
 ## 1. 项目是什么
 
 - **产品**：Medora，给马来西亚用户用的 AI 健康咨询网页（[heymedora.vercel.app](https://heymedora.vercel.app/)）
-- **这次的目标**：在侧边栏「附近诊所」下面加一个「**健康指南**」页面，放 20 张常见病卡片，点开可以看知识重点，再一键去问 Medora
-- **项目阶段**：**C（已经做完，要升级）**｜**规模**：小～中型（只改前端，最花时间的是写内容）
-- **现有架构（这次只碰前端）**
-  - 前端：React 19 + Vite，`consultation-frontend/src/`
-  - 工作区页面切换：`workspace/Sidebar.tsx` 第 8 行 `type Section = 'chat' | 'map'`，第 46–49 行是导航项目；`App.tsx` 用 `section` 状态切换页面（约第 80、177–183、279、311 行）
-  - 设计规范：`src/design/tokens.css`；图标组件：`components/Icon.tsx`
-  - 文字：`i18n.ts`，三种语言 `'zh' | 'en' | 'ms'`，`ms` 的 key 必须和 `zh` 一样（TypeScript 会检查）
-- **测试命令**：`cd consultation-frontend && npm test`（**必须用 `npm test`**，它会加上 jsdom 环境），编译检查 `npm run build`
+- **这次的目标**：**保留**现在的「外部医学 API 检索」，**再加一个来源**：用马来西亚卫生部的临床实践指南（MOH CPG）做成的**向量数据库**。用户提问时，两种来源一起查，回答可以引用「哪份指南、第几页」
+- **为什么做（作品集）**：补上招聘广告最常要求、Medora 还没有的能力：**embeddings、向量数据库、混合检索、RAG 评估（evals）、Python**
+- **项目阶段**：**C（已经做完，要升级）**｜**规模**：中型（新增 Python 资料管线 + 后端一个新来源 + 评估）
+- **现有架构（这次会碰到的部分）**
+  - 后端：TypeScript + Express，`consultation-backend/src/`；数据库用 `pg` 连 Supabase Postgres（Session pooler），迁移文件在 `consultation-backend/sql/`（目前有 `001`、`002`）
+  - 分流：`routing/medicalDataRouter.ts` 会把用户问题转成 1～4 个**英文**查询词（`searchQueries`）
+  - 检索：`services/medicalData/medicalDataService.ts`
+    - `providerSearches` 登记每个来源，`providersFor()` 按问题类型选来源
+    - `mergeEvidence()` 每个来源最多 4 条、总共最多 10 条
+  - 来源类型：`services/medicalData/medicalDataTypes.ts` 的 `MedicalDataProvider`、`MedicalEvidence`
+  - 拼进 prompt：`services/geminiHealthConsultation.ts` 约第 292 行，格式是「标题 / 来源 / 链接 / 内容」
+  - 前端来源标签：`consultation-frontend/src/chat/AssistantMessage.tsx` 的 `PROVIDER_LABELS`
+  - 已有的人工测试题：根目录 `eval/answer-accuracy-test.md`（22 题端到端，**这次不改它**）
+- **测试命令**
+  - 后端：`cd consultation-backend && npm test`，编译检查 `npm run build`
+  - 前端：`cd consultation-frontend && npm test`，编译检查 `npm run build`
+  - Python（新）：`cd rag-pipeline && python -m pytest`
 
 ## 2. 已定决策
 
 | 决策 | 选择 | 为什么 |
 |---|---|---|
-| 名称 | 中文「**健康指南**」、English「**Health Guide**」、BM「**Panduan Kesihatan**」 | 一看就知道是健康知识 |
-| 内容存在哪 | 前端的 TypeScript 文件 `src/guide/guideTopics.ts`，**不用数据库、不用后端** | 内容固定，最简单；用 TypeScript 能检查三种语言都有写 |
-| 图片 | **Health Icons** 的开源医疗图标，加上分类代表色 | CC0 公有领域授权，免费、不用标注出处、风格统一；不用真实病症照片，避免吓到用户 |
-| 图标怎么上色 | 把 SVG 文件放进项目，用 CSS `mask-image` 显示，颜色由分类的 CSS 变量决定 | 不加新套件，同一个图标可以套用任何颜色 |
-| 详情怎么显示 | 点卡片弹出详情：电脑版是对话框，手机版是全屏 | 不用换页，关掉就回到卡片墙 |
-| 「问 Medora」 | 切到问诊页，**把问题填进输入框，但不自动发送** | 用户可以先修改；对话满 3 个时也能用 |
-| 内容谁写 | AI 根据权威资料起草，**用户审核后才算完成**；马来语再请会马来语的人看 | 医疗内容必须有人把关 |
+| 和现有 API 检索的关系 | **保留**，向量库作为第 7 个来源 `cpg` 接进去 | 不推翻已经能用的东西；面试可以讲「API + 本地向量库的混合检索架构」 |
+| 资料 | 马来西亚卫生部临床实践指南（MOH CPG）的 PDF，**第一版只用 6 份** | 本地化、权威、量够（几百页）；先少量跑通再加 |
+| 资料处理和评估用什么写 | **Python**，放在新文件夹 `rag-pipeline/` | 用户选的；招聘几乎都要 Python |
+| 问答时的检索用什么写 | **TypeScript**，在现有后端里 | 后端本来就是 TS，不另开服务 |
+| 向量数据库 | **Supabase Postgres + pgvector**（用现有的数据库） | 不加新服务、不加费用 |
+| Embedding 模型 | **Gemini embedding**（实际模型名第 3 步查证），输出 **768 维** | 已经在用 Gemini；768 维够用，而且 pgvector 的 HNSW 索引最多支持 2000 维 |
+| 检索方式 | **混合检索**：向量相似度 + Postgres 全文搜索（关键词），用 RRF 合并排名 | 医疗名词（药名、病名）关键词搜索很准，语义搜索补意思相近的问题 |
+| 用哪种语言查 | 用分流器已经产生的**英文查询词**去查（指南是英文） | 不用多做翻译 |
+| 评估资料 | **从这 6 份指南出题**（AI 起草，用户审核），**不用 MedQuAD** | MedQuAD 是美国的资料，答案不在 MOH 指南里，拿来测这个向量库没有意义（之前的建议在此更正） |
+| 上线开关 | 环境变量 `CPG_RAG_ENABLED`，默认关闭 | 线上可以随时关掉，不影响现有功能 |
+| PDF 原文件 | **不放进 Git**，只记录下载网址和校验码 | 版权属于卫生部；仓库是公开的 |
 
-### 20 个主题（已和用户确认）
+### 第一版的 6 份指南（执行者第 1 步查证后填入实际名称和版本）
 
-| # | id | 中文 | English | 分类 | 建议的 Health Icons 图标（实际名称以官网为准） |
-|---|---|---|---|---|---|
-| 1 | `dengue` | 骨痛热症 | Dengue | 传染病 | Malaria / Mosquito 相关 |
-| 2 | `influenza` | 流感 | Influenza | 传染病 | Virus / Viral Lung Infection |
-| 3 | `covid19` | 新冠 | COVID-19 | 传染病 | Virus 相关 |
-| 4 | `hfmd` | 手足口病 | Hand, Foot and Mouth Disease | 传染病 | Child / Baby 相关 |
-| 5 | `tuberculosis` | 结核病 | Tuberculosis (TB) | 传染病 | Lungs |
-| 6 | `gastroenteritis` | 急性肠胃炎和食物中毒 | Gastroenteritis & Food Poisoning | 传染病 | Stomach / Diarrhea 相关 |
-| 7 | `diabetes` | 糖尿病 | Diabetes | 慢性病 | Diabetes / Glucose 相关 |
-| 8 | `hypertension` | 高血压 | High Blood Pressure | 慢性病 | Blood Pressure 相关 |
-| 9 | `cholesterol` | 高胆固醇 | High Cholesterol | 慢性病 | Heart / Blood 相关 |
-| 10 | `asthma` | 哮喘 | Asthma | 慢性病 | Inhaler / Lungs |
-| 11 | `kidney` | 慢性肾病 | Chronic Kidney Disease | 慢性病 | Kidneys |
-| 12 | `gout` | 痛风 | Gout | 慢性病 | Joint / Foot 相关 |
-| 13 | `cold` | 感冒和喉咙痛 | Common Cold & Sore Throat | 日常不适 | Cough / Throat 相关 |
-| 14 | `fever` | 发烧（大人和小孩） | Fever (Adults & Children) | 日常不适 | Temperature / Thermometer Digital |
-| 15 | `gastritis` | 胃痛和胃酸倒流 | Stomach Pain & Acid Reflux | 日常不适 | Stomach |
-| 16 | `eczema` | 湿疹和皮肤过敏 | Eczema & Skin Allergy | 日常不适 | Dermatology |
-| 17 | `mental-health` | 焦虑和抑郁 | Anxiety & Depression | 日常不适 | Brain / Mental Health 相关 |
-| 18 | `stroke` | 中风 | Stroke | 认识急症 | Brain |
-| 19 | `heart-attack` | 心脏病发作 | Heart Attack | 认识急症 | Heart |
-| 20 | `heatstroke` | 中暑 | Heatstroke | 认识急症 | High Temperature |
+选和健康指南卡片重叠、马来西亚常见的病：
 
-分类：`infection`（传染病，6 个）、`chronic`（慢性病，6 个）、`everyday`（日常不适，5 个）、`emergency`（认识急症，3 个）
+| # | doc_id | 主题 | 对应健康指南卡片 |
+|---|---|---|---|
+| 1 | `dengue` | Management of Dengue Infection in Adults | 骨痛热症 |
+| 2 | `t2dm` | Management of Type 2 Diabetes Mellitus | 糖尿病 |
+| 3 | `hypertension` | Management of Hypertension | 高血压 |
+| 4 | `asthma` | Management of Asthma in Adults | 哮喘 |
+| 5 | `ckd` | Management of Chronic Kidney Disease | 慢性肾病 |
+| 6 | `dyslipidaemia` | Management of Dyslipidaemia | 高胆固醇 |
+
+找不到某一份，就挑最接近的常见病代替，并在实际做法里写明。
 
 ## 3. 护栏与不可改动的部分
 
 ### 护栏（必须做到）
 
-- **内容只能来自权威来源**：NHS、MedlinePlus、WHO、马来西亚卫生部（KKM / MyHealth）。每张卡片至少 1 个来源，**链接必须是执行者实际打开过、确认存在的页面**，不准编造网址
-- **用自己的话写**，不准整段复制来源网站的文字（版权）
-- 每张卡片都要有「**什么时候要立刻看医生**」，而且不能是空的
-- 急症分类的 3 张卡片：「什么时候要立刻看医生」第一条必须是「立即拨打 999」
-- 骨痛热症卡片：必须写明退烧用 paracetamol，**不要吃布洛芬（ibuprofen）或阿司匹林（aspirin）**
-- 焦虑和抑郁卡片：必须附上求助热线（Befrienders KL **03-7627 2929**，后端急症模板已在用这个号码），以及有自伤念头时立即拨打 999
-- 不写药物剂量；不做诊断性的说法（例如「你有这些症状就是 XX 病」）
-- 页面底部和详情页都要有免责声明：「以上内容仅供健康教育参考，不能替代医生的诊断和治疗」
-- 每张卡片显示「最后审核日期」
-- 分类颜色和卡片文字的对比度至少要 4.5:1
-- 所有新增的界面文字都要有中、英、马三种语言
-- 新界面一律使用 `src/design/tokens.css` 的变量，不准自己写色码（新的分类颜色要先加进 tokens.css）
+- **资料只能来自 MOH 官方网站**（moh.gov.my 或 Academy of Medicine Malaysia acadmed.org.my），下载网址必须是执行者**实际打开过**的，不准编造
+- **PDF 不进 Git**：`rag-pipeline/data/raw/` 加进 `.gitignore`；清单文件只记录网址、版本年份、SHA-256
+- **API key 不进 Git**：`rag-pipeline/.env` 加进 `.gitignore`，另外提供 `rag-pipeline/.env.example`（只有变量名）
+- 每个切块都要记录 **doc_id、页码、章节标题**；回答引用时要能对应到「哪份指南、第几页」
+- 来源链接用 `PDF 网址#page=N`，用户点了会直接打开那一页
+- **向量库出错不能拖垮问诊**：数据库或 embedding 失败时，`cpg` 来源回报错误，其他 API 来源照常工作（跟现有来源的错误处理一样）
+- **省 Gemini 额度**：
+  - 入库时**批量** embedding，已经入库、内容没变的切块不再重算（用内容的 hash 判断）
+  - 评估时把查询向量**缓存到文件**，重跑不再收费
+  - 每一步写明预计调用次数
+- **评估数字必须是真的跑出来的**，报告里写明日期、模型、题数；不准估计或编造
+- 新增的 SQL 只能**新增**表和函数，不改现有的 `conversations` 等表
 
 ### 不可改动（除非用户明确同意）
 
-- 后端完全不改；不加新的 npm 套件
-- Medora 现有的视觉设计和品牌色
-- 问诊、地图现有的行为
+- 现有 6 个 API 来源的行为（MedlinePlus、openFDA、RxNorm、KKMNow、NHS、ICD-11）
+- 分流器 `medicalDataRouter.ts`、急症判断、输出安全检查
+- `geminiHealthConsultation.ts` 的 prompt 内容（证据格式已经是「标题 / 来源 / 链接 / 内容」，`cpg` 直接沿用）
 - 现有的测试不准修改，只能新增
+- 后端只新增一个 npm 套件也不要；embedding 用现有的 `@google/genai`，数据库用现有的 `pg`
 
 ## 4. 分步计划
 
-### [x] 第 1 步｜图标和分类颜色（只改前端）
+### [ ] 第 1 步｜选资料、下载、建 Python 环境（只新增 `rag-pipeline/`）
 
 **做法**：
-1. 到 [healthicons.org](https://healthicons.org/) 按第 2 节的表格，替 20 个主题各挑一个 **outline（线条）风格、24px** 的图标，下载 SVG，存成 `src/guide/icons/<id>.svg`（例如 `dengue.svg`）
-   - 表格里的图标名称只是建议，以官网实际有的为准；找不到合适的就挑最接近的，并把实际用的图标名称记在 README
-2. 新建 `src/guide/icons/README.md`，写明：
-   - 来源：Health Icons（https://healthicons.org/ ，https://github.com/resolvetosavelives/healthicons ）
-   - 授权：CC0 公有领域（2026-11-06 已查证），不需要标注出处
-   - 20 个主题各自用了哪个图标
-3. `src/design/tokens.css`：新增 4 组分类颜色，各有主色和浅底色。**不要用蓝紫色**：
-   ```css
-   --guide-infection: #2e7d6b;      --guide-infection-bg: #e8f4f1;
-   --guide-chronic: var(--berry-700); --guide-chronic-bg: var(--pink-50);
-   --guide-everyday: #8a5a00;       --guide-everyday-bg: #fdf4e1;
-   --guide-emergency: var(--emergency); --guide-emergency-bg: var(--emergency-bg);
-   ```
+1. 新建 `rag-pipeline/`：
+   - `pyproject.toml`：Python ≥ 3.11，依赖 `pymupdf`、`google-genai`、`psycopg[binary]`、`python-dotenv`，开发依赖 `pytest`
+   - `README.md`：这个文件夹做什么、怎么装（`python -m venv .venv` → 安装依赖）、每个脚本怎么跑
+   - `.env.example`：`GEMINI_API_KEY=`、`DATABASE_URL=`
+   - `.gitignore`（或加进根目录 `.gitignore`）：`data/raw/`、`.env`、`.venv/`、`evals/cache/`
+2. 到 MOH 官网找第 2 节的 6 份指南，确认是**最新版**
+3. 新建 `rag-pipeline/data/manifest.json`：每份指南写 `doc_id`、`title`、`edition_year`、`source_url`、`sha256`
+4. 新建 `rag-pipeline/medora_rag/download.py`：读 manifest，把 PDF 下载到 `data/raw/<doc_id>.pdf`，检查 SHA-256；已经下载、校验码对的就跳过
+
+**允许修改的现有测试**：无（这一步没有现有的 Python 测试）
+
+**完成标准**：
+- `python -m medora_rag.download` 能下载 6 份 PDF，重跑一次会全部跳过
+- 新增 `tests/test_manifest.py`：manifest 刚好 6 份、`doc_id` 不重复、网址以 `https://` 开头、`sha256` 是 64 位十六进制
+- `python -m pytest` 全过
+- `git status` 看不到任何 PDF 和 `.env`
+
+**验收重点**：6 个网址都是官方网站、真的打得开；PDF 没有进 Git；Python 3.14 能不能装 pymupdf（不行就在 venv 用 3.12/3.13，写进 README）
+
+### [ ] 第 2 步｜PDF 转文字、切块（只改 `rag-pipeline/`）
+
+**做法**：
+1. `medora_rag/extract.py`：用 pymupdf 逐页取出文字，保留页码；去掉每页重复出现的页眉页脚
+2. `medora_rag/chunk.py`：
+   - 先按章节标题分段，太长的再按段落切，每块约 **300～500 个英文单词**，前后重叠约 **50 个单词**
+   - 跳过：封面、目录、参考文献（References）、委员会名单
+   - 每块输出：`doc_id`、`chunk_index`、`page_start`、`page_end`、`section`（章节标题）、`content`、`content_hash`（SHA-256）
+3. 输出到 `data/chunks/<doc_id>.jsonl`（**这个文件夹也不进 Git**，因为是原文内容）
+4. 统计：每份指南几块、平均字数，印在终端
 
 **允许修改的现有测试**：无
 
 **完成标准**：
-- 新增 `src/guide/icons.test.ts`：用 `import.meta.glob('./icons/*.svg', { query: '?raw', import: 'default', eager: true })` 读取所有图标，确认**刚好 20 个**，文件名和第 2 节的 20 个 id 一一对应，而且每个文件内容都以 `<svg` 开头
-- 前端 `npm test` 全部通过，`npm run build` 没有错误
+- 新增 `tests/test_chunk.py`（用自己写的假文字测，不用真的 PDF）：
+  - 每块字数在范围内（最后一块可以短）
+  - 相邻两块有重叠
+  - 页码正确：跨页的块 `page_start < page_end`
+  - 参考文献章节被跳过
+  - 同样的内容，`content_hash` 一样
+- `python -m pytest` 全过
+- 真的跑一次 6 份指南，把统计结果贴进这一步的「实际做法」
+- 【你做】随便打开 1 份 `jsonl`，看 3 块，确认切出来的是完整、通顺的段落
 
-**验收重点**：图标确实来自 Health Icons（README 有记录）；没有用蓝紫色；tokens.css 只新增、没有改动现有变量
+**验收重点**：表格内容有没有变成乱码（有的话记下来，第一版先接受）；页码对不对（随机抽 3 块对照 PDF）
 
-**实际做法（2026-11-06，待验收）**：
-- 20 个图标全部取自官方仓库 `public/icons/svg/outline-24px/`，原样下载；实际名称见 `src/guide/icons/README.md`。和建议不同的：哮喘用 `body/lungs`（24px 没有吸入器）、湿疹用 `conditions/allergies`（24px 没有 Dermatology）、中风用 `body/neurology`、高胆固醇用 `body/blood-drop`、手足口病用 `people/boy-0105y`
-- 授权：已读官方 LICENSE，`public/icons` 的 SVG 为 CC0 1.0
-- `tokens.css` 在「地图机构类型」后面只新增 8 个 `--guide-*` 变量，数值完全照计划
-- 测试：`src/guide/icons.test.ts`（2 个测试）；`npm test` 11 个文件 39 个测试全过；`npm run build` 成功（只有原本就有的 chunk 超过 500 kB 提醒）
-- ⚠️ 已知事项（用户同意先照计划做）：传染病主色在浅底上对比度 4.37:1、急症 4.36:1，低于 4.5:1；当图标用（3:1 标准）没问题，第 3 步分类小标签不要用「主色字 + 浅底」
-
-### [x] 第 2 步｜20 张卡片的内容（只改前端）
+### [ ] 第 3 步｜建数据库表、向量化入库（`sql/` 新增 1 个文件 + `rag-pipeline/`）
 
 **做法**：
-1. 新建 `src/guide/guideTypes.ts`：
-   ```ts
-   import type { Language } from '../i18n'
-   export type GuideCategory = 'infection' | 'chronic' | 'everyday' | 'emergency'
-   export type Localized<T> = Record<Language, T>   // zh、en、ms 三种语言都必须有
-   export interface GuideSource { name: string; url: string }
-   export interface GuideTopic {
-     id: string
-     category: GuideCategory
-     title: Localized<string>          // 病名
-     summary: Localized<string>        // 这是什么：中文 60 字以内
-     symptoms: Localized<string[]>     // 常见症状：3～5 条
-     care: Localized<string[]>         // 怎么处理和预防：3～5 条
-     seeDoctor: Localized<string[]>    // 什么时候要立刻看医生：2～4 条
-     askPrompt: Localized<string>      // 「问 Medora」时填进输入框的问题
-     sources: GuideSource[]            // 至少 1 个
-     reviewedAt: string                // 最后审核日期，格式 'YYYY-MM-DD'
-   }
-   ```
-2. 新建 `src/guide/guideTopics.ts`：`export const GUIDE_TOPICS: GuideTopic[]`，按第 2 节表格的顺序写 20 个主题
-   - 每条重点都写成短句，口语化，中文每条 30 字以内
-   - `askPrompt` 例如：「我想了解骨痛热症的危险信号，以及什么时候要去医院？」
-   - 内容要符合第 3 节护栏的每一条
-   - `reviewedAt` 先填写作的日期，用户审核后再更新
+1. **查证**（写进第 7 节）：Gemini 现在的 embedding 模型名称、支不支持指定输出 768 维、`RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY` 任务类型、免费额度和一次批量最多几条
+2. 新增 `consultation-backend/sql/003_cpg_vectors.sql`：
+   - `create extension if not exists vector;`
+   - 表 `cpg_documents`：`doc_id`（主键）、`title`、`edition_year`、`source_url`、`ingested_at`
+   - 表 `cpg_chunks`：`id`、`doc_id`（外键）、`chunk_index`、`page_start`、`page_end`、`section`、`content`、`content_hash`、`embedding vector(768)`、`embedding_model`、`tsv`（用 `section + content` 生成的英文全文搜索栏位，generated stored）
+     - 唯一键 `(doc_id, chunk_index)`
+     - 索引：`embedding` 用 HNSW（`vector_cosine_ops`），`tsv` 用 GIN
+   - SQL 函数 `match_cpg_chunks(query_embedding vector(768), query_text text, match_count int)`：
+     - 向量搜索取前 20、全文搜索取前 20
+     - 用 **RRF**（`1 / (60 + 排名)` 加总）合并
+     - 回传前 `match_count` 块，带 `doc_id`、`title`、`source_url`、页码、`section`、`content`、分数
+3. `medora_rag/ingest.py`：
+   - 读 manifest 和 chunks，upsert 到两个表
+   - **只对 `content_hash` 变了或还没有向量的块**做 embedding
+   - 批量调用、失败重试（429/503 等一下再试，最多 3 次）
+   - 印出这次新算了几块、跳过几块
+4. 【你做】在 Supabase SQL Editor 执行 `003_cpg_vectors.sql`
 
 **允许修改的现有测试**：无
 
 **完成标准**：
-- 新增 `src/guide/guideTopics.test.ts`：
-  - 刚好 20 个主题，`id` 没有重复，而且和第 2 节表格一致
-  - 分类数量：`infection` 6、`chronic` 6、`everyday` 5、`emergency` 3
-  - 每个主题三种语言的 `title`、`summary`、`askPrompt` 都不是空的；`symptoms`、`care` 各 3～5 条，`seeDoctor` 2～4 条
-  - 每个主题至少 1 个来源，网址以 `https://` 开头
-  - 3 张急症卡片三种语言的 `seeDoctor[0]` 都包含「999」
-  - `dengue` 的中文 `care` 包含「paracetamol」和「布洛芬」，英文 `care` 包含「ibuprofen」
-  - `mental-health` 三种语言的 `seeDoctor` 都包含「03-7627 2929」和「999」
-  - `reviewedAt` 符合 `YYYY-MM-DD` 格式
-- 前端 `npm test` 全部通过，`npm run build` 没有错误
-- **【你做】逐张审核中文内容**（大约 20～30 分钟）；有问题的地方告诉执行者修改，审核完成才算这一步结束
-- 【你做】马来语请会马来语的人看（可以在第 5 步之前完成）
+- 新增 `tests/test_ingest.py`（假的 embedding 函数，不连真的 Gemini）：内容没变的块不会再算 embedding；批量大小正确
+- 真的跑一次入库，贴出：总块数、embedding 调用次数
+- **再跑一次**入库：embedding 调用次数是 **0**
+- 在 Supabase 执行一次 `select * from match_cpg_chunks(...)`（用任意一块的向量 + 'dengue warning signs'），能回传结果
+- `python -m pytest` 全过；后端 `npm test` 仍全过（没碰后端代码）
 
-**验收重点**：每个来源网址都要实际打开确认存在；内容不是从来源网站整段复制的；没有写药物剂量
+**验收重点**：没有改动现有的表；向量维度是 768；重跑不会重复收费
 
-**实际做法（2026-11-06，AI 草稿完成，等用户审核内容）**：
-- 新增 `src/guide/guideTypes.ts`、`src/guide/guideTopics.ts`（20 个主题，顺序同第 2 节表格）、`src/guide/guideTopics.test.ts`
-- 来源：WHO（骨痛热症）+ NHS 各页面 + Befrienders KL 官网；25 个网址全部用 curl 实际打开，HTTP 200，用的是跳转后的最终网址
-- 内容用自己的话写；没有写剂量；中文每条 ≤30 字、简介 ≤60 字（已用脚本检查）
-- 本地化：不用 NHS 的 111，改成看医生 / 999；高血压、高胆固醇、哮喘、胃痛、湿疹的 seeDoctor 也加了「出现急症信号拨打 999」
-- `reviewedAt` 全部先填 2026-11-06
-- 测试：`npm test` 12 个文件 64 个测试全过；`npm run build` 成功
-- ✅ 用户已审核中文内容（2026-11-06）
-- ⏳ 还差：马来语请会马来语的人看（第 5 步之前）
+**预计 Gemini 用量**：几百块，批量调用大约 **10～30 次**（实际以第 1 步查证的批量上限为准）
 
-### [x] 第 3 步｜健康指南页面（只改前端）
+### [ ] 第 4 步｜检索评估：先量好，再接进后端（只改 `rag-pipeline/`）
 
 **做法**：
-1. `workspace/Sidebar.tsx`：
-   - 第 8 行改成 `export type Section = 'chat' | 'map' | 'guide'`
-   - 第 46–49 行的 `items` 在 `map` 后面加 `{ id: 'guide', icon: 'book', label: t.navGuide }`
-2. 新建 `src/guide/GuidePanel.tsx`（卡片墙）：
-   - 顶部：标题 `t.guideTitle`、一句介绍 `t.guideIntro`
-   - 分类筛选按钮：全部 / 传染病 / 慢性病 / 日常不适 / 认识急症（`role="tablist"` 或一组 `aria-pressed` 按钮）
-   - 卡片网格：手机 2 栏、平板 3 栏、电脑 4 栏；每张卡片是一个 `<button>`，有图标（第 4 点）、病名、分类小标签
-   - 页面底部：免责声明 `t.guideDisclaimer`
-3. 新建 `src/guide/GuideDetail.tsx`（详情）：
-   - `role="dialog"`、`aria-modal="true"`、`aria-labelledby` 指向标题；按 Esc 或点关闭按钮会关闭，关闭后焦点回到原来那张卡片
-   - 电脑版是置中的对话框；手机版（宽度 < 768px）是全屏
-   - 内容依序：图标 + 病名 + 分类 → 这是什么 → 常见症状 → 怎么处理和预防 → 🔴 什么时候要立刻看医生（用 `--emergency` 系列颜色标出）→ 来源（新分页打开）和「最后审核：YYYY-MM-DD」→ 免责声明 →「问 Medora」按钮（第 4 步才接上功能，这一步先放按钮并呼叫 `onAsk(topic)`）
-4. 新建 `src/guide/GuideIcon.tsx`：用 `import.meta.glob('./icons/*.svg', { query: '?url', import: 'default', eager: true })` 取得图标网址，显示成一个 `<span aria-hidden="true">`，style 设定 `mask-image` 和 `-webkit-mask-image` 为该网址，`background-color` 为 `var(--guide-<category>)`；外框背景用 `var(--guide-<category>-bg)`
-5. 新建 `src/guide/guide.css`：所有样式只用 tokens 变量
-6. `App.tsx`：
-   - 在地图那个 `ws-view`（约第 311 行）后面，加一个 `section === 'guide'` 时显示的 `ws-view`，放 `<GuidePanel lang={lang} onOpenMenu={() => setDrawerOpen(true)} onAsk={...} />`
-   - 手机版顶部要有打开菜单的按钮，跟地图页一样
-7. `i18n.ts`（三种语言）：`navGuide`、`guideTitle`、`guideIntro`、`guideAll`、`guideCatInfection`、`guideCatChronic`、`guideCatEveryday`、`guideCatEmergency`、`guideWhatIs`、`guideSymptoms`、`guideCare`、`guideSeeDoctor`、`guideSources`、`guideReviewed`、`guideAsk`、`guideClose`、`guideDisclaimer`
+1. **出题**：新建 `rag-pipeline/evals/golden.jsonl`，共 **40 题**：
+   - **32 题有答案**：每份指南 5～6 题。每题有 `id`、`question_zh`（用户会怎么问）、`queries_en`（1～3 个英文查询词，模仿分流器的输出）、`expected`（正确答案所在的 `doc_id` + 页码范围）、`key_facts`（2～3 个答案重点）
+   - **8 题资料里没有**（例如问偏头痛、湿疹）：`expected` 为空，用来检查会不会「硬找」不相关的内容
+   - AI 先根据切块起草，**【你做】审核每一题**（大约 20 分钟）
+2. `medora_rag/evals/retrieval_eval.py`：对每题跑三种检索方式，计算指标：
+   - 方式：**只用向量**、**只用关键词**、**混合（RRF）**
+   - 指标：**Hit@5**（前 5 块里有没有正确的页）、**MRR**（正确答案排第几）、没答案的题最高分是多少（看要不要设门槛）
+   - 查询向量缓存到 `evals/cache/`
+3. 输出报告 `rag-pipeline/evals/reports/2026-MM-DD-retrieval.md`：三种方式的对比表、答错的题和原因
+4. 根据结果**定下**：后端每次取几块（预设 3）、要不要设最低分数门槛。写进这一步的「实际做法」
 
 **允许修改的现有测试**：无
 
 **完成标准**：
-- 新增 `src/guide/GuidePanel.test.tsx`：
-  - 显示 20 张卡片
-  - 点「认识急症」后只剩 3 张
-  - 点「骨痛热症」卡片会打开对话框，标题是骨痛热症，而且看得到「什么时候要立刻看医生」区块和来源链接
-  - 按 Esc 关闭对话框
-  - 切到 BM 后，导航和标题显示马来语
-- 新增测试：侧边栏有「健康指南」，点了会显示健康指南页面
-- 前端 `npm test` 全部通过，`npm run build` 没有错误
-- 【你做】电脑和手机各打开一次，看卡片墙和详情的样子
+- 新增 `tests/test_metrics.py`：Hit@5 和 MRR 的计算用固定的例子测
+- 报告里有三种方式的真实数字
+- **混合检索的 Hit@5 ≥ 0.8**；达不到就停下来汇报，**不要**为了达标改题目
+- 【你做】审核完 40 题
 
-**验收重点**：问诊和地图页面行为不变；对话框可以用键盘操作；颜色都来自 tokens
+**验收重点**：数字是真的跑出来的；题目是在审核后才跑的，不是看结果改题目
 
-**实际做法（2026-11-06，待验收）**：
-- `Sidebar.tsx`：`Section` 加 `'guide'`，导航加 `book` 图标的「健康指南」
-- 新增 `GuidePanel.tsx`、`GuideDetail.tsx`、`GuideIcon.tsx`、`guide.css`，另加一个小文件 `guideLabels.ts`（分类名称对照，面板和详情共用）
-- 筛选用一组 `aria-pressed` 按钮；对话框 Esc / 关闭按钮 / 点背景关闭，Tab 在对话框里循环，关闭后焦点回到卡片
-- 分类小标签用「分类浅底 + 正文次要色文字 + 分类主色小圆点」，避开第 1 步记下的对比度问题；急症区块标题用 `--emergency-hover`（比 `--emergency` 深，对比度够）
-- 遮罩颜色用 `color-mix(var(--ink-900) 36%, transparent)`，没有新写色码，tokens.css 没改
-- `App.tsx`：地图后面加 `section === 'guide'` 的 `ws-view`；`onAsk` 先放空函数，第 4 步接上
-- `i18n.ts`：三种语言各加 17 个 key
-- 测试：新增 `src/guide/GuidePanel.test.tsx`（20 张卡、急症筛选剩 3 张、骨痛热症对话框和来源链接、Esc 关闭并回到卡片）和 `src/guide/guideNav.test.tsx`（侧边栏进入健康指南、切 BM 后导航和标题是马来语）；`npm test` 14 个文件 69 个测试全过；`npm run build` 成功
-- 在浏览器看过电脑版（4 栏、置中对话框）和手机版（375px：2 栏、全屏详情），截图正常
-- ⏳ 还差：【你做】电脑和手机各打开一次看样子
+**预计 Gemini 用量**：第一次约 **40～100 次** embedding（每个查询词 1 次，之后走缓存）
 
-### [x] 第 4 步｜「问 Medora」按钮（只改前端）
+### [ ] 第 5 步｜后端接入 `cpg` 来源 + 前端标签
 
 **做法**：
-1. `chat/ChatPanel.tsx`：`ChatPanelProps`（第 20–28 行）新增 `prefill?: { text: string; nonce: number }`。`prefill` 改变时（看 `nonce`），把 `text` 放进输入框（`setInput`）并把焦点移到输入框，**不要自动发送**
-2. `App.tsx`：
-   - 新增状态 `const [chatPrefill, setChatPrefill] = useState<{ text: string; nonce: number }>()`
-   - `GuidePanel` 的 `onAsk={(topic) => { setChatPrefill({ text: topic.askPrompt[lang], nonce: Date.now() }); setSection('chat') }}`
-   - 把 `prefill={chatPrefill}` 传给 `ChatPanel`
-   - **不要**自动开新对话，留在当前的对话里
+1. `medicalDataTypes.ts`：`MedicalDataProvider` 加 `'cpg'`
+2. 新建 `services/medicalData/providers/mohCpg.ts`：
+   - `searchMohCpg(query)`：
+     - 没开 `CPG_RAG_ENABLED` 或没有 `DATABASE_URL` → 丢出 `NOT_CONFIGURED`
+     - 用 `@google/genai` 算查询向量（`RETRIEVAL_QUERY`、768 维，模型名和第 3 步**一样**）
+     - 调用 `match_cpg_chunks`，取第 4 步定下的块数
+   - 转成 `MedicalEvidence`：
+     - `title`：`MOH CPG: <指南名称>（p. <页码>）`
+     - `summary`：切块内容，截到约 800 个字
+     - `url`：`<source_url>#page=<page_start>`
+   - 查询向量放进**内存缓存**（同一个查询词不重复调用）
+   - 数据库连线用现有的 pool（照 `conversationRepository` 的方式），**不要另开连线**
+3. `medicalDataService.ts`：
+   - `providerSearches` 加 `cpg: searchMohCpg`
+   - `providersFor()`：所有类型都把 `'cpg'` 加在**最前面**（这样合并时本地指南优先）
+   - **不改** `mergeEvidence` 的上限
+4. 前端 `AssistantMessage.tsx`：`PROVIDER_LABELS` 加 `cpg: 'MOH CPG'`
+5. `consultation-backend/.env.example`（没有就在 README 写）：`CPG_RAG_ENABLED=false`
+
+**允许修改的现有测试**：无。如果有现有测试因为 `providersFor` 多了 `'cpg'` 而失败，**停下来汇报**，不要改测试
+
+**完成标准**：
+- 新增 `tests/mohCpg.test.ts`（模拟数据库和 embedding）：
+  - 关闭时回报 `NOT_CONFIGURED`，其他来源照常
+  - 正常时 evidence 的 `title`、`url`（带 `#page=`）、`provider: 'cpg'` 正确
+  - 数据库出错时回报错误，其他来源的结果照常回传
+  - 同一个查询词第二次不再调用 embedding
+- 后端 `npm test`、`npm run build` 全过；前端 `npm test`、`npm run build` 全过
+- 本地开 `CPG_RAG_ENABLED=true` 问一次「骨痛热症有什么危险信号？」，回答的来源列表里有 `MOH CPG`（**只问这一次**）
+
+**验收重点**：关掉开关时，行为和现在完全一样；没有新增 npm 套件
+
+### [ ] 第 6 步｜端到端回答评估（小规模）
+
+**做法**：
+1. `medora_rag/evals/answer_eval.py`：从 golden 选 **15 题**（每份指南 2～3 题），对**本地后端**发问，开关各跑一次：
+   - A：`CPG_RAG_ENABLED=false`（现在的样子）
+   - B：`CPG_RAG_ENABLED=true`
+2. 用 Gemini 当评审（LLM-as-a-judge），每个回答打分：
+   - **重点覆盖**：`key_facts` 有几个说到
+   - **忠于资料**：有没有说出资料里没有的具体数字或建议
+   - **有没有引用 MOH CPG**（只看 B）
+3. 报告 `evals/reports/2026-MM-DD-answers.md`：A、B 对比表，加上 3 个具体例子（同一题 A 和 B 的回答）
 
 **允许修改的现有测试**：无
 
 **完成标准**：
-- 新增 `src/guide/askMedora.test.tsx`：打开「骨痛热症」→ 点「问 Medora」→ 画面切回问诊页，输入框的内容等于该主题的中文 `askPrompt`，而且**没有**发出任何聊天请求（模拟的 fetch 没有被调用到 `/api/chat`）
-- 前端 `npm test` 全部通过，`npm run build` 没有错误
+- 报告里有 A、B 两组真实分数
+- 【你做】读 3 个例子，判断评审打的分合不合理
+- 如果 B 没有比 A 好，**照实写**，并列出可能原因；不要调整到「看起来比较好」
 
-**验收重点**：不会自动发送；对话满 3 个时也能正常填入
+**预计 Gemini 用量**：约 15 题 × 2 组 ×（分流 + 回答 + 评审）≈ **90 次**。开跑前先跟用户确认额度够
 
-**实际做法（2026-11-06，2026-11-08 已验收）**：
-- `ChatPanel.tsx`：新增 `prefill?: { text; nonce }`，`nonce` 变了就 `setInput(text)` 并把焦点移到输入框，不发送
-- `App.tsx`：新增 `chatPrefill` 状态；`GuidePanel` 的 `onAsk` 填入 `topic.askPrompt[lang]` 并切到问诊页，留在当前对话
-- 计划外的一点小改动：`startNewChat`、`selectConversation` 里会清掉 `chatPrefill`，避免开新对话 / 换对话时旧问题又被填进去
-- 测试：新增 `src/guide/askMedora.test.tsx`（填入内容等于中文 askPrompt、焦点在输入框、没有调用 `/api/chat`；对话满 3 个时也能填入）；`npm test` 15 个文件 71 个测试全过；`npm run build` 成功
+### [ ] 第 7 步｜作品集文档 + 部署上线
 
-### [ ] 第 5 步｜部署和线上验证
+**做法**：
+1. 根目录 `README.md`：在「Authoritative Evidence Retrieval RAG」那一节补上 MOH CPG 向量检索：架构、混合检索、评估数字（链接到报告）
+2. `architecture_diagram.html`：检索那一块加上「MOH CPG 向量库（pgvector）」
+3. 部署：
+   - 【你做】确认线上 Supabase 已经执行 `003_cpg_vectors.sql`，资料已入库（如果线上和本地是同一个数据库，第 3 步已经完成）
+   - 【你做】Render 加环境变量 `CPG_RAG_ENABLED=true`
+   - 推送到 GitHub，等 Render 和 Vercel 部署完成
 
-- 推送到 GitHub，等 Vercel 部署完成（后端没有改，Render 不用动）
-- **完成标准**（【你做】用手机试）：
-  - [ ] 侧边栏有「健康指南」，打开后看到 20 张卡片
-  - [ ] 分类筛选正常
-  - [ ] 点开卡片可以看到完整内容，来源链接打得开
-  - [ ] 「问 Medora」会把问题填进输入框，不会自动发送
-  - [ ] 切换中文、EN、BM 都正常
+**完成标准**（【你做】用手机试）：
+- [ ] 问「骨痛热症有什么危险信号？」，来源列表有 `MOH CPG`，点开会到 PDF 对应的页
+- [ ] 问一个跟 6 份指南无关的问题（例如湿疹），回答正常，不会硬塞无关的指南内容
+- [ ] 把 `CPG_RAG_ENABLED` 改成 `false` 重启，问诊照常（可选）
 
 **验收重点**：这一步由你亲自验收
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 1～4 步已验收并提交
-- **下一步**：第 5 步（推送、部署和线上验证）
+- **当前进度**：规划已确认（2026-11-08），还没开始
+- **下一步**：第 1 步（选资料、下载、建 Python 环境）
 
 ## 6. 分工
 
 - **【你做】**
-  - 第 2 步：逐张审核中文内容；请会马来语的人看马来语
-  - 第 3、5 步：用电脑和手机实际看一次
-- **【AI做】**：下载图标、写内容草稿、写代码和测试、每完成一步更新本文件进度
-- **【一起】**：第 3 步完成后，看卡片的样式要不要调整
+  - 确认这份计划
+  - 第 2 步：看几块切出来的内容
+  - 第 3 步：在 Supabase 执行 SQL
+  - 第 4 步：审核 40 题
+  - 第 6 步：看评审例子；开跑前确认 Gemini 额度
+  - 第 7 步：Render 环境变量、手机验收
+- **【AI做】**：写 Python 管线、SQL、后端来源、测试、评估脚本和报告草稿；每完成一步更新本文件进度
+- **【一起】**：第 4 步看完检索数字后，决定每次取几块、要不要设门槛
 
-## 7. 关键假设和查证结果
+## 7. 关键假设和需要查证的事
 
-- ✅ **已查证（2026-11-06，Health Icons 官方 GitHub）**：图标采用 CC0 公有领域授权，可自由修改，不用标注出处；共约 776 个图标；有 Lungs、Kidneys、Heart、Stomach、Brain、Dermatology、Temperature 等图标
-- 每个主题的具体图标名称**需要到官网确认**；骨痛热症、中暑等可能没有完全对应的图标，用最接近的
-- 浏览器对 CSS `mask-image` 的支持：现代浏览器都支持，Safari 需要加 `-webkit-` 前缀
-- 内容由 AI 起草，需要人工审核；马来语由 AI 翻译，需要会马来语的人审核
+- ⏳ **Gemini embedding 模型**：名称、768 维输出、任务类型、免费额度、批量上限 → 第 3 步查证
+- ⏳ **Supabase 能开 pgvector**：Supabase 官方支持 `vector` 扩展，执行 SQL 时确认
+- ⏳ **MOH CPG 下载**：6 份都能从官网下载、是最新版 → 第 1 步查证
+- ⏳ **使用条款**：MOH CPG 公开给大众看；我们只做检索、短摘录并附原文链接，PDF 不再散布 → 第 1 步顺便看官网有没有特别限制，有的话停下来汇报
+- ⏳ **pymupdf 授权是 AGPL**：只用在离线资料处理脚本、不跟着线上服务部署，仓库本身也是公开的，应该没问题 → 第 1 步确认；有疑虑就换成 `pypdf`（BSD 授权，表格处理比较差）
+- ⏳ **Python 3.14** 能不能装好所有依赖 → 第 1 步确认
+- ⏳ **线上和本地是不是同一个 Supabase 数据库** → 第 3 步问用户
+- 假设：分流器产生的英文查询词足够用来查英文指南；第 4 步的评估会验证这一点
 
 ## 8. 暂不做（以后再讨论）
 
-- 更多主题、AI 自动生成卡片、审核后台
-- 收藏、点赞、分享卡片
-- 依照用户问过的问题推荐相关卡片
-- 视频
-- 紧急求助页、点选式症状自查、意见反馈、关于 Medora 等其他新页面
+- 法律 RAG（用户之后想做的第二个作品）
+- 超过 6 份的指南、马来文资料、自动检查指南有没有新版
+- 专门的重排序模型（reranker）
+- 修改 prompt 让模型「优先采用本地指南」
+- 管理后台、上传新 PDF 的界面
+- 用 LangGraph 重写问诊流程（另一份计划）
 
 ## 9. 【执行限制】
 
-- 完成标准：<当前这一步在「4. 分步计划」里写的「完成标准」，例如第 1 步：「`src/guide/icons/` 刚好有 20 个 SVG，文件名对应 20 个 id，前端 `npm test` 全部通过」>，达到立即停止，不顺手优化别的
+- 完成标准：<当前这一步在「4. 分步计划」里写的「完成标准」>，达到立即停止，不顺手优化别的
 - 范围：只看与问题直接相关的文件，不扫全项目，不用子代理
 - 次数：最多「修改 → 验证」2 轮；同一错误出现 2 次直接停
-- 禁止：为了通过而修改 / 删除 / 跳过测试，或降低验证标准
+- 禁止：为了通过而修改 / 删除 / 跳过测试，或降低验证标准；为了让评估数字好看而改题目
+- 真实调用 Gemini 前，先说预计调用几次
 - 停止时汇报：做了什么、当前证据、卡在哪、建议下一步（由我决定是否继续）
 
 > 补充：这一批每一步的「允许修改的现有测试」都是「无」。新的测试一律放在新文件，不准改动旧测试。
@@ -306,16 +326,15 @@
 - **流程**：开发对话做第 N 步 → 开一个**全新的**验收对话检查 → 用户看结论决定 → 通过就提交 → 下一步
 - **不通过**：把验收员列出的问题贴回开发对话修，修完再开一个新的验收对话检查（修的次数算在执行限制的「最多 2 轮」里）
 - **验收对话必须是全新的对话**，不能继承开发对话的记忆；能换模型就换成和开发不同的模型
-- **每一步验收通过后马上提交**；**第 5 步之前不要推送**
-- 有界面的步骤，用户要亲自打开页面看一眼
+- **每一步验收通过后马上提交**；**第 7 步之前不要推送**
 
 ### 验收开场白（把 N 换成步骤号）
 
 > 你是验收员，不是开发者。只检查，**不准修改任何文件**。
 > 1. 读 PLAN.md 第 N 步的「做法」「允许修改的现有测试」「完成标准」「验收重点」，以及第 3 节（护栏）和第 9 节（执行限制）。
-> 2. 运行 `git status` 和 `git diff`，列出改了哪些文件，指出计划以外的改动。
+> 2. 运行 `git status` 和 `git diff`，列出改了哪些文件，指出计划以外的改动；确认没有 PDF、切块内容或 `.env` 被加进 Git。
 > 3. 检查测试文件的改动：有没有修改、删除或跳过不在「允许修改」清单里的测试。
-> 4. 自己运行测试命令，贴出结果摘要；不要只看之前的对话说通过了。
+> 4. 自己运行测试命令，贴出结果摘要；不要只看之前的对话说通过了。**不要**重跑会调用 Gemini 的评估脚本，只检查报告和缓存。
 > 5. 逐条对照完成标准，每条标 ✅ 或 ❌，并附上证据（文件、行号或测试名称）。
 > 6. 检查 PLAN.md 这一步是否打了 [x]，并记录了实际的做法和名称。
 >
