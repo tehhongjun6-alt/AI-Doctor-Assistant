@@ -177,7 +177,30 @@
 
 **验收重点**：表格内容有没有变成乱码（有的话记下来，第一版先接受）；页码对不对（随机抽 3 块对照 PDF）
 
-### [ ] 第 3 步｜建数据库表、向量化入库（`sql/` 新增 1 个文件 + `rag-pipeline/`）
+### [x] 第 3 步｜建数据库表、向量化入库（`sql/` 新增 1 个文件 + `rag-pipeline/`）
+
+**实际做法与记录**：
+1. **Gemini Embedding 模型查证**（已同步写入第 7 节）：
+   - 模型名称：`gemini-embedding-001`
+   - 向量维度：`output_dimensionality=768`（MRL 768 维输出 + L2 归一化）
+   - 任务类型：入库使用 `RETRIEVAL_DOCUMENT`，检索使用 `RETRIEVAL_QUERY`
+   - 批量上限与免费层限流：单次 API 最多支持 100 条文本，但免费层有每分钟 30,000 tokens（TPM）限制；单个切块约 600～670 tokens，因此预设 `DEFAULT_BATCH_SIZE = 25`（每批约 15,000 tokens），499 块共分 20 批提交并逐批落库。
+2. **新增 `consultation-backend/sql/003_cpg_vectors.sql` 并已在 Supabase 执行**：
+   - 启用 `vector` 扩展（`create extension if not exists vector;`）
+   - 新建 `public.cpg_documents` 与 `public.cpg_chunks`（含 `embedding vector(768)`、generated stored `tsv` 全文检索列、唯一键 `(doc_id, chunk_index)`、HNSW 向量索引 `cpg_chunks_embedding_hnsw_idx` 与 GIN 全文索引 `cpg_chunks_tsv_gin_idx`）
+   - 新建混合检索 SQL 函数 `public.match_cpg_chunks(query_embedding vector(768), query_text text, match_count int default 5)`（向量前 20 + 全文前 20，RRF `1 / (60 + rank)` 合并排序）
+3. **新增 `rag-pipeline/medora_rag/ingest.py` 与 `rag-pipeline/tests/test_ingest.py`**：
+   - 读取 `manifest.json` 与 `data/chunks/*.jsonl`，upsert 到 `cpg_documents` 和 `cpg_chunks`
+   - 对比数据库已有 `(doc_id, chunk_index) -> content_hash`，仅对新增或 `content_hash` 改变或无向量的切块调用 `gemini-embedding-001`
+   - 内置 429/503 自动解析 `retry in Xs` 退避重试，且每批完成后立即写入数据库 commit
+4. **真实入库与二次重跑结果**：
+   - 首次入库：`Ingestion complete: total=499 | newly_embedded=499 | skipped=0 | embedding_api_calls=50`（20 个有效批次全部入库，含免费层 TPM 限流退避重试共发起 50 次请求）
+   - 二次重跑：`Ingestion complete: total=499 | newly_embedded=0 | skipped=499 | embedding_api_calls=0`（0 次 API 调用）
+5. **Supabase `match_cpg_chunks` 混合检索验证**：
+   - 执行 `select * from public.match_cpg_chunks((select embedding from public.cpg_chunks where doc_id = 'dengue' and chunk_index = 0 limit 1), 'dengue warning signs', 5);`，成功返回 5 条结果（第 1 条为 `dengue` p.43-45 `8.1 Predictors of Severe Dengue`，score=`0.031319`；第 2 条为 `dengue` p.66-69 `Algorithm 1: Management of Dengue Patients with Warning`，score=`0.029710`）。
+6. **测试验证**：
+   - `rag-pipeline`：`python -m pytest` 16 项测试全过（含新增 `tests/test_ingest.py` 3 项测试）
+   - `consultation-backend`：`npm test` 19 个测试文件（94 项测试）全过
 
 **做法**：
 1. **查证**（写进第 7 节）：Gemini 现在的 embedding 模型名称、支不支持指定输出 768 维、`RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY` 任务类型、免费额度和一次批量最多几条
@@ -312,8 +335,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 2 步完成（2026-11-08），6 份指南提取与切块完成（共 499 块），等待验收
-- **下一步**：第 3 步（建数据库表、向量化入库）
+- **当前进度**：第 3 步完成（2026-11-08），Supabase 建表、499 块切块 768 维向量化入库与 `match_cpg_chunks` 混合检索验证完成，等待验收
+- **下一步**：第 4 步（检索评估：先量好，再接进后端）
 
 ## 6. 分工
 
@@ -329,12 +352,17 @@
 
 ## 7. 关键假设和需要查证的事
 
-- ⏳ **Gemini embedding 模型**：名称、768 维输出、任务类型、免费额度、批量上限 → 第 3 步查证
-- ⏳ **Supabase 能开 pgvector**：Supabase 官方支持 `vector` 扩展，执行 SQL 时确认
-- ⏳ **MOH CPG 下载**：6 份都能从官网下载、是最新版 → 第 1 步查证
-- ⏳ **使用条款**：MOH CPG 公开给大众看；我们只做检索、短摘录并附原文链接，PDF 不再散布 → 第 1 步顺便看官网有没有特别限制，有的话停下来汇报
-- ⏳ **pymupdf 授权是 AGPL**：只用在离线资料处理脚本、不跟着线上服务部署，仓库本身也是公开的，应该没问题 → 第 1 步确认；有疑虑就换成 `pypdf`（BSD 授权，表格处理比较差）
-- ⏳ **Python 3.14** 能不能装好所有依赖 → 第 1 步确认
+- ✅ **Gemini embedding 模型**（第 3 步已查证）：
+  - **模型名称**：`gemini-embedding-001`（官方当前主力 embedding 模型，取代旧版 `text-embedding-004`）。
+  - **768 维输出**：原生默认 3072 维，支持通过 Matryoshka Representation Learning (MRL) 指定 `output_dimensionality=768`（`outputDimensionality: 768`），截断后做 L2 归一化即可保持高检索精度。
+  - **任务类型**：支持 `task_type="RETRIEVAL_DOCUMENT"`（文档切块入库）与 `task_type="RETRIEVAL_QUERY"`（用户查询检索）。
+  - **批量上限**：单次 `embed_content` / `batchEmbedContents` 请求最多支持 **100 条**文本（超过 100 条会返回 `400 Bad Request`）；考虑到免费层 TPM 30,000 上限（每块约 650 tokens），本管线预设每批 `DEFAULT_BATCH_SIZE=25`（约 15,000 tokens/批），499 个切块分 **20 批**完成入库。
+  - **免费额度与限流**：免费层按每分钟处理的文本与 token 数（RPM 约 100、TPM 30,000、RPD 1,000）计量，单条文本上限 2,048 tokens；`medora_rag/ingest.py` 已内置 429/503 自动解析 `retry in Xs` 退避重试。
+- ✅ **Supabase 能开 pgvector**（第 3 步已验证）：Supabase 已启用 `vector` 扩展并完成 HNSW 索引与 `match_cpg_chunks` 函数创建。
+- ✅ **MOH CPG 下载**（第 1 步已查证）：6 份最新版均已从 MaHTAS 官网下载并校验 SHA-256。
+- ✅ **使用条款**（第 1 步已查证）：MOH CPG 公开供临床与公众参考，仅做检索短摘录并附官方 PDF 链接，PDF 原件不进 Git 仓库。
+- ✅ **pymupdf 授权是 AGPL**（第 1 步已确认）：仅用于本地离线提取脚本，不随线上后端部署。
+- ✅ **Python 3.14**（第 1 步已确认）：Python 3.14.6 可直接安装 `pymupdf 2.1`、`psycopg[binary]`、`google-genai` 预编译 wheel 并通过全部测试。
 - ⏳ **线上和本地是不是同一个 Supabase 数据库** → 第 3 步问用户
 - 假设：分流器产生的英文查询词足够用来查英文指南；第 4 步的评估会验证这一点
 

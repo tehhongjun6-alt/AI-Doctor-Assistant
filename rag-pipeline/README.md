@@ -55,7 +55,14 @@ python -m medora_rag.download
 python -m medora_rag.chunk
 ```
 
-### 3. 运行自动化测试
+### 3. 向量化入库（Supabase pgvector）
+先在 Supabase SQL Editor 执行 `../consultation-backend/sql/003_cpg_vectors.sql`，再运行入库脚本：
+```bash
+python -m medora_rag.ingest
+```
+*注：脚本仅对新增或 `content_hash` 发生变化的切块调用 Gemini embedding，未变化的切块将自动跳过。*
+
+### 4. 运行自动化测试
 ```bash
 python -m pytest
 ```
