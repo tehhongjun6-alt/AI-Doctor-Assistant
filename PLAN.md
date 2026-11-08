@@ -333,7 +333,7 @@
 
 **验收重点**：关掉开关时，行为和现在完全一样；没有新增 npm 套件
 
-### [ ] 第 6 步｜端到端回答评估（小规模）
+### [x] 第 6 步｜端到端回答评估（小规模）
 
 **做法**：
 1. `medora_rag/evals/answer_eval.py`：从 golden 选 **15 题**（每份指南 2～3 题），对**本地后端**发问，开关各跑一次：
@@ -354,7 +354,73 @@
 
 **预计 Gemini 用量**：约 15 题 × 2 组 ×（分流 + 回答 + 评审）≈ **90 次**。开跑前先跟用户确认额度够
 
+### [ ] 第 6b 步｜优化分流器：给向量库具体的搜索句（2026-11-08 新增）
+
+> **为什么加这一步**：第 6 步发现开关打开（B）后，重点覆盖反而从 66.7% 降到 55.6%。原因不是向量库，而是**分流器**：
+> 1. 规则字典很有把握时只给一个病名（如 `diabetes`），向量库只能找到概论页，找不到写着具体答案的那一页（第 4 步用具体句子查时 Hit@5 = 0.97，差距就在这里）
+> 2. 规则字典没有慢性肾病、胆固醇等词，这些问题被当成 `direct_model`，完全没查资料
+>
+> 外国医学 API 用病名查是合适的，所以**病名照旧**，只是**另外多给向量库一句具体的英文搜索句**。
+> 用户已同意（2026-11-08）这一步修改第 3 节列为不可改动的 `medicalDataRouter.ts` 和规则分流器，但**只限下面列出的改动**；急症判断的规则和 prompt 文字一律不改。
+> **第 7 步（上线）要等这一步的完成标准达到后才能做。**
+
+**做法**：
+1. `routing/medicalDataTypes.ts`：`MedicalDataRouteResult` 新增 `cpgQuery?: string`（给 MOH 向量库用的一句英文搜索句）。**`searchQueries` 的内容和格式完全不变**（现有测试会检查它）
+2. `routing/heuristicRouter.ts`（规则分流器）：
+   - `DISEASE_TERMS` 补词（只新增，不改现有项目）：
+     - `/慢性肾病|肾病|肾功能|肌酐|eGFR|\bckd\b|chronic kidney/i` → `'chronic kidney disease'`
+     - `/胆固醇|血脂|高血脂|LDL|他汀|statin|cholesterol|dyslipid/i` → `'cholesterol'`
+     - `/糖化血红蛋白|HbA1c/i` → `'diabetes'`
+   - 新增一张「问题重点」对照表 `CPG_FOCUS_TERMS`（中文说法 → 指南用的英文），至少包括：诊断/标准/数值 → `diagnosis criteria`；危险信号/危险期 → `warning signs`；怀孕/孕妇 → `pregnancy`；吃什么药/首选药/降压药 → `drug treatment`；饮食/吃什么 → `diet`；目标/控制在多少 → `target`；并发症 → `complications`；检查/筛查 → `screening`
+   - 有识别到病名时，产生 `cpgQuery` = 病名 + 对照到的重点词（例如 `diabetes HbA1c diagnosis criteria`）；没有对照到重点词时，`cpgQuery` 就等于病名
+   - 这是「**规则模式**」
+3. `routing/medicalDataRouter.ts`（模型分流器）：
+   - `routerSchema` 新增选填栏位 `cpgQuery`（string）
+   - prompt 只**在最后追加**一段说明：「当 route 为 medical_qa 或 medical_api 时，在 cpgQuery 写一句 5～12 个英文单词的搜索句，包含病名和用户真正想问的重点，用临床指南常用的英文术语；其他 route 设为空字符串」。**原有 prompt 文字一个字都不改**
+   - 新增环境变量 `CPG_QUERY_MODE`：
+     - `rule`（默认）：照现在的规则优先，规则有把握时用规则产生的 `cpgQuery`
+     - `model`：**`medical_qa`（知识提问）一律交给模型**，用模型写的 `cpgQuery`；其他情况照旧
+   - 这是「**模型模式**」，每道知识提问多 1 次 Gemini 调用
+4. `services/medicalData/medicalDataService.ts`：
+   - `cpg` 来源：有 `route.cpgQuery` 就**只用它查一次**；没有才退回现在的做法（用 `searchQueries` 每个词查）
+   - 其他来源完全不变
+5. `.env.example`：新增 `CPG_QUERY_MODE=rule`
+6. 检索快速检查（**只花 embedding，不花聊天额度**）：新增 `rag-pipeline/medora_rag/evals/router_query_check.py`
+   - 对第 6 步的 15 题，各用两种模式取得 `cpgQuery`（规则模式在本地直接跑；模型模式会调用分流器，15 次）
+   - 用 `cpgQuery` 查 `match_cpg_chunks` 前 3 段，看有没有命中 golden 标的页码
+   - 输出 `evals/reports/2026-MM-DD-router-queries.md`：每题两种模式的 `cpgQuery`、前 3 段页码、有没有命中
+7. 重考第 6 步：`answer_eval.py` 增加一个模式参数，跑三组（同一天、同样 15 题、同样评审）：
+   - **A**：`CPG_RAG_ENABLED=false`（新的分流器，开关关）
+   - **B-rule**：`CPG_RAG_ENABLED=true` + `CPG_QUERY_MODE=rule`
+   - **B-model**：`CPG_RAG_ENABLED=true` + `CPG_QUERY_MODE=model`
+   - 报告 `evals/reports/2026-MM-DD-answers-v2.md`：三组对比表、跟第 6 步结果的对照、每组的平均延迟
+   - 第 6 步的旧报告**保留不动**
+
+**允许修改的现有测试**：无。如果现有分流器测试（如 `heuristicRouter.test.ts`）因为补词而失败，**停下来汇报**，不要改测试
+
+**完成标准**：
+- 新增 `tests/heuristicRouterCpgQuery.test.ts`：
+  - 「HbA1c 诊断糖尿病的标准是多少？」→ `searchQueries` 含 `diabetes`，`cpgQuery` 含 `diabetes` 和 `diagnosis`
+  - 「肌酐高要注意什么？」→ route 不是 `direct_model`，`searchQueries` 含 `chronic kidney disease`
+  - 「LDL 胆固醇多少算高？」→ route 不是 `direct_model`，`searchQueries` 含 `cholesterol`
+  - 「你好」→ 没有 `cpgQuery`
+- 新增测试：`retrieveMedicalData` 在有 `cpgQuery` 时，`cpg` 来源只被调用一次而且用的是 `cpgQuery`；其他来源仍用 `searchQueries`
+- 后端 `npm test`、`npm run build` 全过；Python `python -m pytest` 全过
+- 检索快速检查报告：至少一种模式在 15 题里命中 ≥ 12 题，**而且 `t2dm-01` 有命中第 27～28 页**
+- 重考报告：最好的那一组 B 的**重点覆盖 ≥ A**、**忠于事实 ≥ A**
+- 达不到就**停下来汇报**，列出错题和原因；**不准为了达标改题目、改评审标准或改 golden**
+- 【你做】看报告，决定上线用 `rule` 还是 `model`（看分数、延迟和额度）
+
+**验收重点**：`searchQueries` 没被改动（外国 API 行为不变）；急症相关规则和 prompt 原文没动；第 6 步的旧报告还在
+
+**预计 Gemini 用量**：
+- 检索快速检查：约 30 次 embedding + 15 次分流器调用
+- 重考：15 题 × 3 组 ×（分流 + 回答 + 评审）≈ **135～150 次**
+- **开跑前先跟用户确认额度够**
+
 ### [ ] 第 7 步｜作品集文档 + 部署上线
+
+> **前提**：第 6b 步的完成标准已经达到。上线时 Render 也要设 `CPG_QUERY_MODE`（用第 6b 步选定的模式）
 
 **做法**：
 1. 根目录 `README.md`：在「Authoritative Evidence Retrieval RAG」那一节补上 MOH CPG 向量检索：架构、混合检索、评估数字（链接到报告）
@@ -373,8 +439,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 5 步完成（2026-11-08），后端已接入 `cpg` 来源（`mohCpg.ts`）并在 `providersFor()` 置顶，前端已添加 `MOH CPG` 标签，前后端测试与构建全过，并已完成单次真实检索验证（「骨痛热症有什么危险信号？」返回 3 条带 `#page=` 的 `MOH CPG` 来源），等待验收
-- **下一步**：第 6 步（端到端回答评估（小规模））
+- **当前进度**：第 1～5 步完成；第 6 步已跑完并出报告（`evals/reports/2026-11-08-answers.md`），结果是开关打开后重点覆盖反而下降（66.7% → 55.6%），原因查明在分流器；用户已读报告，认为评审打分合理（2026-11-08）
+- **下一步**：第 6b 步（优化分流器，给向量库具体的搜索句），达标后才做第 7 步
 
 ## 6. 分工
 
