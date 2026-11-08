@@ -1,6 +1,7 @@
 import type { MedicalDataRouteResult } from '../../routing/medicalDataTypes.js'
 
 export type MedicalDataProvider =
+  | 'cpg'
   | 'medlineplus'
   | 'openfda'
   | 'rxnorm'

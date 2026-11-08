@@ -446,22 +446,32 @@ interface MessageRow {
   created_at: Date
 }
 
-export function createPgConversationRepository(
-  connectionString = process.env.DATABASE_URL,
-): ConversationRepository {
-  let pool: pg.Pool | undefined
+let sharedPgPool: pg.Pool | undefined
+let sharedPgPoolUrl: string | undefined
 
-  function getPool(): pg.Pool {
-    if (!connectionString) {
-      throw new Error('DATABASE_URL 尚未配置。')
-    }
-    pool ??= new pg.Pool({
+export function getSharedPgPool(
+  connectionString = process.env.DATABASE_URL,
+): pg.Pool {
+  if (!connectionString) {
+    throw new Error('DATABASE_URL 尚未配置。')
+  }
+  if (!sharedPgPool || sharedPgPoolUrl !== connectionString) {
+    sharedPgPool = new pg.Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 30_000,
     })
-    return pool
+    sharedPgPoolUrl = connectionString
+  }
+  return sharedPgPool
+}
+
+export function createPgConversationRepository(
+  connectionString = process.env.DATABASE_URL,
+): ConversationRepository {
+  function getPool(): pg.Pool {
+    return getSharedPgPool(connectionString)
   }
 
   function rowToState(row: ConversationRow): ConversationState {

@@ -280,7 +280,7 @@
 
 **预计 Gemini 用量**：第一次约 **40～100 次** embedding（每个查询词 1 次，之后走缓存）
 
-### [ ] 第 5 步｜后端接入 `cpg` 来源 + 前端标签
+### [x] 第 5 步｜后端接入 `cpg` 来源 + 前端标签
 
 **做法**：
 1. `medicalDataTypes.ts`：`MedicalDataProvider` 加 `'cpg'`
@@ -301,6 +301,24 @@
    - **不改** `mergeEvidence` 的上限
 4. 前端 `AssistantMessage.tsx`：`PROVIDER_LABELS` 加 `cpg: 'MOH CPG'`
 5. `consultation-backend/.env.example`（没有就在 README 写）：`CPG_RAG_ENABLED=false`
+
+**实际做法与记录**：
+- 修改 `consultation-backend/src/services/medicalData/medicalDataTypes.ts`：`MedicalDataProvider` 联合类型加入 `'cpg'`。
+- 修改 `consultation-backend/src/services/conversationRepository.ts`：导出 `getSharedPgPool(connectionString = process.env.DATABASE_URL)`，复用模块级单例 `pg.Pool` 连线池，不另开新连线。
+- 新建 `consultation-backend/src/services/medicalData/providers/mohCpg.ts`：
+  - 导出常量：`CPG_EMBEDDING_MODEL = 'gemini-embedding-001'`、`CPG_EMBEDDING_DIM = 768`、`CPG_MATCH_COUNT = 3`。
+  - 导出函数：`searchMohCpg(query)`、`createMohCpgSearcher(deps)`、`clearMohCpgEmbeddingCache()`、`normalizeL2(values)`、`formatPgVector(values)`。
+  - 当 `CPG_RAG_ENABLED` 不为 `'true'`（或 `'1'`）或缺少 `DATABASE_URL` / `GEMINI_API_KEY` 时抛出 `MedicalHttpError('NOT_CONFIGURED', ...)`。
+  - 使用 `@google/genai`（`taskType: 'RETRIEVAL_QUERY'`、`outputDimensionality: 768`）计算并 L2 归一化查询向量，存入内存缓存 `queryEmbeddingCache`；随后通过 `getSharedPgPool()` 调用 `public.match_cpg_chunks($1::vector(768), $2, $3)` 取前 3 块。
+  - 映射为 `MedicalEvidence`：`provider: 'cpg'`、`title: 'MOH CPG: <title>（p. <page_start>-<page_end>）'`、`summary` 截断至 800 字、`url: '<source_url>#page=<page_start>'`。
+- 修改 `consultation-backend/src/services/medicalData/medicalDataService.ts`：`providerSearches` 注册 `cpg: searchMohCpg`；`providersFor()` 的 `symptom`、`medication`、`disease/general` 三个分支均将 `'cpg'` 置于首位；保留 `mergeEvidence` 原有上限（单来源最多 4 条、总计最多 10 条）。
+- 修改 `consultation-frontend/src/chat/AssistantMessage.tsx`：`PROVIDER_LABELS` 新增 `cpg: 'MOH CPG'`。
+- 修改 `consultation-backend/.env.example`：新增 `CPG_RAG_ENABLED=false`。
+- 新建 `consultation-backend/tests/mohCpg.test.ts`：4 项单元测试全过（未改动任何现有测试文件）；后端 `npm test`（20 files / 98 tests）与 `npm run build` 全过，前端 `npm test`（15 files / 71 tests）与 `npm run build` 全过，未新增任何 npm 套件。
+- 单次真实检索验证（本地开启 `CPG_RAG_ENABLED=true`，提问「骨痛热症有什么危险信号？」）：分流产生查询词 `dengue`，调用 1 次 `gemini-embedding-001` 与 Supabase `match_cpg_chunks`，返回的 `evidence` / `sources` 列表前 3 条均为 `provider: 'cpg'`（前端显示标签为 `MOH CPG`）且链接带 `#page=`：
+  1. `MOH CPG: MANAGEMENT OF DENGUE IN ADULTS (FOURTH EDITION)（p. 109-120）` → `https://mymahtas2.moh.gov.my/files/CPG%20Dengue4-121026%20%282%29.pdf#page=109`
+  2. `MOH CPG: MANAGEMENT OF DENGUE IN ADULTS (FOURTH EDITION)（p. 103-104）` → `https://mymahtas2.moh.gov.my/files/CPG%20Dengue4-121026%20%282%29.pdf#page=103`
+  3. `MOH CPG: MANAGEMENT OF DENGUE IN ADULTS (FOURTH EDITION)（p. 42-43）` → `https://mymahtas2.moh.gov.my/files/CPG%20Dengue4-121026%20%282%29.pdf#page=42`
 
 **允许修改的现有测试**：无。如果有现有测试因为 `providersFor` 多了 `'cpg'` 而失败，**停下来汇报**，不要改测试
 
@@ -355,8 +373,8 @@
 
 ## 5. 当前进度和下一步
 
-- **当前进度**：第 4 步完成（2026-11-08），40 题黄金测试集检索评估完成（Hybrid RRF `Hit@5 = 0.9688`、`MRR = 0.9167`），已定下第 5 步参数（每次取 `3` 块、不设硬性 RRF 分数门槛），等待验收
-- **下一步**：第 5 步（后端接入 `cpg` 来源 + 前端标签）
+- **当前进度**：第 5 步完成（2026-11-08），后端已接入 `cpg` 来源（`mohCpg.ts`）并在 `providersFor()` 置顶，前端已添加 `MOH CPG` 标签，前后端测试与构建全过，并已完成单次真实检索验证（「骨痛热症有什么危险信号？」返回 3 条带 `#page=` 的 `MOH CPG` 来源），等待验收
+- **下一步**：第 6 步（端到端回答评估（小规模））
 
 ## 6. 分工
 
