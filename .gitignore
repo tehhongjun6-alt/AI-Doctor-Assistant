@@ -8,9 +8,6 @@ work/
 *.log
 .DS_Store
 .venv/
-rag-pipeline/data/raw/
-rag-pipeline/data/chunks/
-rag-pipeline/evals/cache/
 __pycache__/
 .pytest_cache/
 

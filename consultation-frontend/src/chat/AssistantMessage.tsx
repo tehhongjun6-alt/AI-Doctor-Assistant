@@ -81,7 +81,6 @@ const URGENCY_ICON: Record<'low' | 'medium' | 'high', IconName> = {
 }
 
 export const PROVIDER_LABELS: Record<string, string> = {
-  cpg: 'MOH CPG',
   medlineplus: 'MedlinePlus',
   openfda: 'OpenFDA',
   rxnorm: 'RxNorm',

@@ -10,7 +10,6 @@ import type {
 import { searchIcd11 } from './providers/icd11.js'
 import { searchKkmNow } from './providers/kkmNow.js'
 import { searchMedlinePlus } from './providers/medlinePlus.js'
-import { searchMohCpg } from './providers/mohCpg.js'
 import { searchNhs } from './providers/nhs.js'
 import { searchOpenFda } from './providers/openFda.js'
 import { searchRxNorm } from './providers/rxNorm.js'
@@ -18,7 +17,6 @@ import { searchRxNorm } from './providers/rxNorm.js'
 type ProviderSearch = (query: string) => Promise<MedicalEvidence[]>
 
 const providerSearches: Record<MedicalDataProvider, ProviderSearch> = {
-  cpg: searchMohCpg,
   medlineplus: searchMedlinePlus,
   openfda: searchOpenFda,
   rxnorm: searchRxNorm,
@@ -29,12 +27,12 @@ const providerSearches: Record<MedicalDataProvider, ProviderSearch> = {
 
 function providersFor(category: MedicalDataCategory, message: string) {
   if ((category as string) === 'icd' || /icd|编码|code/i.test(message)) {
-    return ['cpg', 'icd11', 'medlineplus'] satisfies MedicalDataProvider[]
+    return ['icd11', 'medlineplus'] satisfies MedicalDataProvider[]
   }
   if (category === 'medication') {
-    return ['cpg', 'openfda', 'medlineplus', 'rxnorm', 'kkmnow'] satisfies MedicalDataProvider[]
+    return ['openfda', 'medlineplus', 'rxnorm', 'kkmnow'] satisfies MedicalDataProvider[]
   }
-  return ['cpg', 'medlineplus', 'icd11', 'nhs'] satisfies MedicalDataProvider[]
+  return ['medlineplus', 'icd11', 'nhs'] satisfies MedicalDataProvider[]
 }
 
 function toIssue(
